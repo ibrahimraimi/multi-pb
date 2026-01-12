@@ -4,8 +4,10 @@ set -e
 DOMAIN_NAME="${DOMAIN_NAME:-localhost.direct}"
 ACME_EMAIL="${ACME_EMAIL:-admin@example.com}"
 LOCAL_DEV="${LOCAL_DEV:-false}"
+DASHBOARD_PORT=3000
 BASE_PORT=8081
 DATA_DIR="/mnt/data"
+DASHBOARD_DIR="/app/dashboard"
 
 CADDYFILE="/etc/Caddyfile"
 SUPERVISORD_CONF="/etc/supervisord.conf"
@@ -88,6 +90,37 @@ EOF
     instance_count=$((instance_count + 1))
 done
 
+# Add dashboard Caddy config
+cat >> "$CADDYFILE" << EOF
+
+dashboard.${DOMAIN_NAME} {
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+    reverse_proxy localhost:${DASHBOARD_PORT}
+}
+EOF
+
+# Append dashboard to supervisord.conf
+cat >> "$SUPERVISORD_CONF" << EOF
+
+[program:dashboard]
+command=node ${DASHBOARD_DIR}/index.js
+environment=PORT="${DASHBOARD_PORT}",HOST="127.0.0.1",ORIGIN="https://dashboard.${DOMAIN_NAME}"
+autostart=true
+autorestart=true
+stderr_logfile=/var/log/supervisor/dashboard.err.log
+stdout_logfile=/var/log/supervisor/dashboard.out.log
+stdout_logfile_maxbytes=10MB
+stderr_logfile_maxbytes=10MB
+stdout_logfile_backups=3
+stderr_logfile_backups=3
+EOF
+
 # Append Caddy program to supervisord.conf
 cat >> "$SUPERVISORD_CONF" << EOF
 
@@ -107,6 +140,7 @@ EOF
 echo "============================================"
 echo "Configured ${instance_count} PocketBase instance(s)"
 echo "Domain: ${DOMAIN_NAME}"
+echo "Dashboard: https://dashboard.${DOMAIN_NAME}"
 echo "============================================"
 
 if [ "$instance_count" -eq 0 ]; then
