@@ -1,0 +1,19 @@
+services:
+  multi-pb:
+    build: .
+    container_name: multi-pb
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./pb_data:/mnt/data
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      - DOMAIN_NAME=localhost.direct
+      - ACME_EMAIL=admin@example.com
+
+volumes:
+  caddy_data:
+  caddy_config:
