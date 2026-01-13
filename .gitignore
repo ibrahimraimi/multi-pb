@@ -1,2 +1,25 @@
 pb_data/
-data
+data/
+multipb-data/
+
+# Docker volumes
+caddy_data/
+caddy_config/
+
+# Temporary files
+*.log
+*.tmp
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+node_modules/
+.svelte-kit/
