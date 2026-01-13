@@ -22,12 +22,14 @@ if [ ! -f "$MANIFEST_FILE" ] || ! grep -q "\"$INSTANCE_NAME\"" "$MANIFEST_FILE";
 fi
 
 # Start via supervisord
-if command -v supervisorctl >/dev/null 2>&1; then
-    supervisorctl start "pb-${INSTANCE_NAME}"
-    echo "✓ Instance '$INSTANCE_NAME' started"
+if command -v supervisorctl >/dev/null 2>&1 && [ -S /var/run/supervisor.sock ]; then
+    if supervisorctl start "pb-${INSTANCE_NAME}" >/dev/null 2>&1; then
+        echo "✓ Instance '$INSTANCE_NAME' started"
+    else
+        echo "Warning: Could not start instance via supervisord (will start on next container restart)"
+    fi
 else
-    echo "Error: supervisorctl not available"
-    exit 1
+    echo "Warning: supervisord not available (instance will start on next container restart)"
 fi
 
 # Update status in manifest

@@ -7,12 +7,13 @@ RUN apk add --no-cache \
     ca-certificates \
     curl \
     unzip \
+    python3 \
     supervisor \
     jq \
     bash
 
 # Install Caddy from official static binary (more reliable than Alpine package)
-RUN curl -fsSL https://caddyserver.com/api/download?os=linux&arch=amd64 -o /usr/local/bin/caddy && \
+RUN curl -fsSL "https://caddyserver.com/api/download?os=linux&arch=amd64" -o /usr/local/bin/caddy && \
     chmod +x /usr/local/bin/caddy
 
 # Detect architecture and download appropriate PocketBase binary

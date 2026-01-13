@@ -30,9 +30,9 @@ if [ ! -f "$MANIFEST_FILE" ] || ! grep -q "\"$INSTANCE_NAME\"" "$MANIFEST_FILE";
 fi
 
 # Stop supervisord process
-if command -v supervisorctl >/dev/null 2>&1; then
-    supervisorctl stop "pb-${INSTANCE_NAME}" || true
-    supervisorctl remove "pb-${INSTANCE_NAME}" || true
+if command -v supervisorctl >/dev/null 2>&1 && [ -S /var/run/supervisor.sock ]; then
+    supervisorctl stop "pb-${INSTANCE_NAME}" >/dev/null 2>&1 || true
+    supervisorctl remove "pb-${INSTANCE_NAME}" >/dev/null 2>&1 || true
     echo "Instance stopped via supervisord"
 fi
 

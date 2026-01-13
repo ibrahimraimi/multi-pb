@@ -125,11 +125,14 @@ EOF
 echo "Supervisord config created: $SUPERVISOR_CONF"
 
 # Reload supervisord
-if command -v supervisorctl >/dev/null 2>&1; then
-    supervisorctl reread
-    supervisorctl update
-    supervisorctl start "pb-${INSTANCE_NAME}"
-    echo "Instance started via supervisord"
+if command -v supervisorctl >/dev/null 2>&1 && [ -S /var/run/supervisor.sock ]; then
+    if supervisorctl reread >/dev/null 2>&1 && supervisorctl update >/dev/null 2>&1; then
+        supervisorctl start "pb-${INSTANCE_NAME}" >/dev/null 2>&1 && echo "Instance started via supervisord" || echo "Warning: Could not start instance via supervisord (will start on next container restart)"
+    else
+        echo "Warning: Could not reload supervisord (will start on next container restart)"
+    fi
+else
+    echo "Warning: supervisord not available (instance will start on next container restart)"
 fi
 
 # Regenerate Caddy config

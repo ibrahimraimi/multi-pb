@@ -20,3 +20,6 @@ caddy_config/
 # OS
 .DS_Store
 Thumbs.db
+
+node_modules/
+.svelte-kit/

@@ -22,12 +22,14 @@ if [ ! -f "$MANIFEST_FILE" ] || ! grep -q "\"$INSTANCE_NAME\"" "$MANIFEST_FILE";
 fi
 
 # Stop via supervisord
-if command -v supervisorctl >/dev/null 2>&1; then
-    supervisorctl stop "pb-${INSTANCE_NAME}"
-    echo "✓ Instance '$INSTANCE_NAME' stopped"
+if command -v supervisorctl >/dev/null 2>&1 && [ -S /var/run/supervisor.sock ]; then
+    if supervisorctl stop "pb-${INSTANCE_NAME}" >/dev/null 2>&1; then
+        echo "✓ Instance '$INSTANCE_NAME' stopped"
+    else
+        echo "Warning: Could not stop instance via supervisord (may already be stopped)"
+    fi
 else
-    echo "Error: supervisorctl not available"
-    exit 1
+    echo "Warning: supervisord not available (instance may already be stopped)"
 fi
 
 # Update status in manifest
