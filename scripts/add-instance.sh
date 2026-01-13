@@ -126,8 +126,19 @@ echo "Supervisord config created: $SUPERVISOR_CONF"
 
 # Reload supervisord
 if command -v supervisorctl >/dev/null 2>&1; then
-    # Check if supervisord is actually running
-    if supervisorctl status >/dev/null 2>&1; then
+    # Check if supervisord is actually running (with retry for startup timing)
+    SUPERVISOR_READY=false
+    for i in 1 2 3; do
+        if supervisorctl status >/dev/null 2>&1; then
+            SUPERVISOR_READY=true
+            break
+        fi
+        if [ $i -lt 3 ]; then
+            sleep 1
+        fi
+    done
+    
+    if [ "$SUPERVISOR_READY" = true ]; then
         echo "Reloading supervisord configuration..."
         supervisorctl reread >/dev/null 2>&1
         supervisorctl update >/dev/null 2>&1
@@ -139,7 +150,8 @@ if command -v supervisorctl >/dev/null 2>&1; then
             echo "Warning: Could not start instance (will start on next container restart)"
         fi
     else
-        echo "Warning: supervisord not running (instance will start on next container restart)"
+        echo "Note: supervisord not ready yet (instance will start automatically)"
+        echo "      Container may still be initializing. Check with: docker logs multipb"
     fi
 else
     echo "Warning: supervisorctl not available (instance will start on next container restart)"
