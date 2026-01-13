@@ -1,61 +1,188 @@
 # Multi-PB
 
-A multi-tenant PocketBase management platform. Run multiple isolated PocketBase instances behind a single reverse proxy with automatic SSL.
-
-## Quick Start
-
-### Install on VPS
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/your-repo/multi-pb/main/install.sh | bash
-```
-
-Or clone and run locally:
-
-```bash
-git clone https://github.com/your-repo/multi-pb.git
-cd multi-pb
-./install.sh
-```
-
-### What happens:
-1. **Prompts for configuration** (domain, port, data directory)
-2. **Creates docker-compose.yml** with your settings
-3. **Starts the container**
-4. **Opens the dashboard** for onboarding
+A simple, single-container solution for running multiple isolated PocketBase instances with path-based routing. No DNS setup required, minimal complexity, maximum reliability.
 
 ## Features
 
-- **Dynamic tenant management** - Create/delete PocketBase instances via dashboard
-- **Automatic routing** - Each tenant gets a subdomain (`myapp.yourdomain.com`)
-- **Hot reload** - No container restart needed when adding tenants
-- **Flexible deployment** - Works behind any reverse proxy or standalone
-- **Web dashboard** - Modern UI for managing instances
+- **Single Container** - One Docker container, one port, hundreds of instances
+- **Path-Based Routing** - Access instances via `http://host:port/{instance}/` 
+- **Zero Host Conflicts** - All instances use internal ports, only one external port
+- **Simple CLI Management** - Add/remove/start/stop instances with shell commands
+- **Persistent Storage** - Single volume mount preserves all instance data
+- **Automatic Routing** - Caddy reverse proxy auto-configured from manifest
+- **Process Management** - Supervisord ensures all instances stay running
+- **Healthchecks** - Built-in monitoring and readiness checks
+
+## Quick Start
+
+### 1. Install and Run
+
+```bash
+# Clone repository
+git clone https://github.com/n3-rd/multi-pb.git
+cd multi-pb
+
+# Build and start
+docker compose up -d
+```
+
+Multi-PB will be running on port `25983` by default.
+
+### 2. Create Your First Instance
+
+```bash
+# Add a new PocketBase instance
+docker exec multipb add-instance.sh myapp
+
+# Access it at: http://localhost:25983/myapp/
+```
+
+### 3. Manage Instances
+
+```bash
+# List all instances
+docker exec multipb list-instances.sh
+
+# Stop an instance
+docker exec multipb stop-instance.sh myapp
+
+# Start an instance
+docker exec multipb start-instance.sh myapp
+
+# Remove an instance
+docker exec multipb remove-instance.sh myapp
+```
+
+## Installation
+
+### Option A: Docker Compose (Recommended)
+
+```bash
+# Clone repo
+git clone https://github.com/n3-rd/multi-pb.git
+cd multi-pb
+
+# Optional: Customize port in docker-compose.yml
+# Default port is 25983
+
+# Start Multi-PB
+docker compose up -d
+
+# Check status
+docker ps
+docker logs multipb
+```
+
+### Option B: Direct Docker
+
+```bash
+# Build image
+docker build -t multipb .
+
+# Run container
+docker run -d \
+  --name multipb \
+  -p 25983:25983 \
+  -v multipb-data:/var/multipb/data \
+  multipb
+
+# Create first instance
+docker exec multipb add-instance.sh alpha
+```
+
+### Option C: Custom Port
+
+If you want to use a different port:
+
+```bash
+# Create .env file
+echo "MULTIPB_PORT=8080" > .env
+
+# Update docker-compose.yml port mapping to match
+# Then start
+docker compose up -d
+```
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────┐
-│                Your VPS                     │
+│           Docker Container                  │
 │  ┌───────────────────────────────────────┐  │
-│  │    Your Reverse Proxy (optional)      │  │
-│  │    (Traefik, nginx, Caddy, etc.)      │  │
-│  └──────────────────┬────────────────────┘  │
-│                     │                       │
-│  ┌──────────────────▼────────────────────┐  │
-│  │         Multi-PB Container            │  │
-│  │  ┌─────────────────────────────────┐  │  │
-│  │  │           Caddy                 │  │  │
-│  │  │   (internal routing + SSL)      │  │  │
-│  │  └──────────────┬──────────────────┘  │  │
-│  │                 │                     │  │
-│  │  ┌──────┬───────┴───────┬──────┐     │  │
-│  │  │      │               │      │     │  │
-│  │  ▼      ▼               ▼      ▼     │  │
-│  │ Dashboard  PB-1      PB-2    PB-N    │  │
-│  │ :3000     :8081     :8082   :808N    │  │
-│  └───────────────────────────────────────┘  │
+│  │  Caddy (:25983)                       │  │
+│  │  - /_health  → Health check           │  │
+│  │  - /_instances → List instances       │  │
+│  │  - /alpha/*  → PB Instance (30000)    │  │
+│  │  - /beta/*   → PB Instance (30001)    │  │
+│  │  - /gamma/*  → PB Instance (30002)    │  │
+│  └──────────────┬────────────────────────┘  │
+│                 │                           │
+│    ┌────────────┴──────────────┐            │
+│    │     Supervisord            │            │
+│    │  (Process Manager)         │            │
+│    └────────────┬──────────────┘            │
+│                 │                           │
+│  ┌──────┬───────┴───────┬──────┐            │
+│  │      │               │      │            │
+│  ▼      ▼               ▼      ▼            │
+│ PB-1  PB-2   ...      PB-N                  │
+│:30000 :30001          :30N                  │
 └─────────────────────────────────────────────┘
+         ▲
+         │
+    One Port: 25983
+```
+
+## CLI Commands
+
+All commands are run via `docker exec multipb <command>`:
+
+### add-instance.sh
+
+Create and start a new PocketBase instance.
+
+```bash
+# Basic usage
+docker exec multipb add-instance.sh myapp
+
+# With admin credentials (for future use)
+docker exec multipb add-instance.sh myapp --email admin@example.com --password secret123
+```
+
+### remove-instance.sh
+
+Stop and remove a PocketBase instance.
+
+```bash
+docker exec multipb remove-instance.sh myapp
+
+# Will prompt to delete data directory
+```
+
+### list-instances.sh
+
+List all configured instances.
+
+```bash
+docker exec multipb list-instances.sh
+
+# Output:
+# PocketBase Instances:
+# ====================
+# alpha    Port: 30000    Status: running    Created: 2024-01-13T10:30:00Z
+# beta     Port: 30001    Status: running    Created: 2024-01-13T10:35:00Z
+```
+
+### start-instance.sh / stop-instance.sh
+
+Control instance lifecycle.
+
+```bash
+# Stop an instance
+docker exec multipb stop-instance.sh myapp
+
+# Start an instance
+docker exec multipb start-instance.sh myapp
 ```
 
 ## Configuration
@@ -64,125 +191,214 @@ cd multi-pb
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DOMAIN_NAME` | `localhost.direct` | Base domain for subdomains |
-| `HTTP_PORT` | `8080` | Internal HTTP port |
-| `HTTPS_PORT` | `8443` | Internal HTTPS port (if enabled) |
-| `ENABLE_HTTPS` | `false` | Enable ACME SSL certificates |
-| `ACME_EMAIL` | `admin@example.com` | Email for Let's Encrypt |
-| `DATA_DIR` | `/mnt/data` | Data directory path |
+| `MULTIPB_PORT` | `25983` | External port exposed from container |
+| `MULTIPB_DATA_DIR` | `/var/multipb/data` | Data directory inside container |
 
-### Deployment Options
+Configure in `docker-compose.yml` or `.env` file.
 
-#### Option A: Behind existing reverse proxy (recommended)
+### Port Range
 
-Your proxy (Traefik, nginx, Caddy, etc.) handles SSL and routes `*.pb.yourdomain.com` to Multi-PB.
+Instances are assigned internal ports from `30000-39999`. This allows up to 10,000 instances per container.
 
-```yaml
-ports:
-  - "127.0.0.1:8080:8080"  # Only accessible locally
-environment:
-  - DOMAIN_NAME=pb.yourdomain.com
-  - ENABLE_HTTPS=false     # Proxy handles SSL
+### Data Persistence
+
+All instance data is stored in a single volume:
+
+```
+/var/multipb/data/
+├── alpha/          # Instance "alpha" data
+│   ├── pb_data/
+│   └── pb_migrations/
+├── beta/           # Instance "beta" data
+└── instances.json  # Manifest mapping instances to ports
 ```
 
-#### Option B: Standalone with SSL
+## Production Deployment
 
-Multi-PB handles SSL directly (no external proxy needed).
+### Behind a Reverse Proxy
 
-```yaml
-ports:
-  - "80:8080"
-  - "443:8443"
-environment:
-  - DOMAIN_NAME=yourdomain.com
-  - ENABLE_HTTPS=true
-  - ACME_EMAIL=ssl@yourdomain.com
+For production, place Multi-PB behind your main reverse proxy (nginx, Traefik, Caddy, etc.):
+
+```nginx
+# nginx example
+server {
+    listen 80;
+    server_name pb.yourdomain.com;
+    
+    location / {
+        proxy_pass http://localhost:25983;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
 ```
 
-## Usage
+```yaml
+# Traefik example (docker-compose labels)
+services:
+  multipb:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.multipb.rule=Host(`pb.yourdomain.com`)"
+      - "traefik.http.services.multipb.loadbalancer.server.port=25983"
+```
 
-### Dashboard
+### Subdomain Routing (Optional)
 
-Access the dashboard at:
-- Local: `http://localhost:8080`
-- Production: `https://dashboard.yourdomain.com`
+If you want subdomain-based routing instead of paths:
 
-### Create a tenant
+1. Set up wildcard DNS: `*.pb.yourdomain.com → your-server-ip`
+2. Use an external reverse proxy to route subdomains to paths:
 
-1. Click "New Instance" in dashboard
-2. Enter subdomain (e.g., `myapp`)
-3. Click "Create"
+```nginx
+# nginx - route subdomain to path
+server {
+    server_name ~^(?<instance>.+)\.pb\.yourdomain\.com$;
+    location / {
+        proxy_pass http://localhost:25983/$instance/;
+    }
+}
+```
 
-The instance is immediately available at `https://myapp.yourdomain.com/_/`
+This keeps Multi-PB simple while allowing flexible routing externally.
 
-### API
+### Backup Strategy
 
 ```bash
-# Get status
-curl http://localhost:8080/api/status
+# Backup all data
+docker run --rm \
+  -v multipb-data:/data \
+  -v $(pwd):/backup \
+  alpine tar czf /backup/multipb-backup-$(date +%Y%m%d).tar.gz /data
 
-# List tenants
-curl http://localhost:8080/api/tenants
+# Restore data
+docker run --rm \
+  -v multipb-data:/data \
+  -v $(pwd):/backup \
+  alpine tar xzf /backup/multipb-backup-20240113.tar.gz -C /
+```
 
-# Create tenant
-curl -X POST http://localhost:8080/api/tenants \
-  -H "Content-Type: application/json" \
-  -d '{"subdomain": "myapp", "name": "My App"}'
+### Monitoring
 
-# Delete tenant
-curl -X DELETE http://localhost:8080/api/tenants/myapp
+```bash
+# Check container health
+docker ps  # Should show "healthy"
 
-# Restart tenant
-curl -X POST http://localhost:8080/api/tenants/myapp/restart
+# View logs
+docker logs multipb
+
+# Check instance status
+docker exec multipb list-instances.sh
+
+# Check supervisord status
+docker exec multipb supervisorctl status
+```
+
+## Healthchecks
+
+Multi-PB provides built-in healthcheck endpoints:
+
+```bash
+# Container health (used by Docker)
+curl http://localhost:25983/_health
+
+# List all instances
+curl http://localhost:25983/_instances
+```
+
+## Troubleshooting
+
+### Container won't start
+
+```bash
+# Check logs
+docker logs multipb
+
+# Verify volume
+docker volume inspect multipb-data
+
+# Check port availability
+netstat -tuln | grep 25983
+```
+
+### Instance won't start
+
+```bash
+# Check instance logs
+docker exec multipb cat /var/log/multipb/<instance>.log
+docker exec multipb cat /var/log/multipb/<instance>.err.log
+
+# Check supervisord status
+docker exec multipb supervisorctl status
+
+# Try restarting the instance
+docker exec multipb stop-instance.sh <instance>
+docker exec multipb start-instance.sh <instance>
+```
+
+### Port conflicts
+
+Multi-PB uses internal ports (30000-39999) that don't conflict with host ports. If you still have issues:
+
+```bash
+# Check instances.json
+docker exec multipb cat /var/multipb/instances.json
+
+# Verify no port collisions
+docker exec multipb netstat -tuln
+```
+
+### Can't access instance
+
+```bash
+# Verify Caddy is running
+docker exec multipb supervisorctl status caddy
+
+# Check Caddy config
+docker exec multipb cat /etc/caddy/Caddyfile
+
+# Reload proxy configuration
+docker exec multipb reload-proxy.sh
+
+# Test direct access to instance
+docker exec multipb curl http://localhost:30000/api/health
 ```
 
 ## Development
 
 ```bash
-# Clone
-git clone https://github.com/your-repo/multi-pb.git
+# Clone repository
+git clone https://github.com/n3-rd/multi-pb.git
 cd multi-pb
 
 # Build and run
 docker compose up -d --build
 
 # View logs
-docker logs -f multi-pb
+docker logs -f multipb
 
-# Access dashboard
-open http://localhost:8080
+# Test CLI commands
+docker exec multipb add-instance.sh test1
+docker exec multipb list-instances.sh
+docker exec multipb remove-instance.sh test1
 ```
 
-### Project Structure
+## Comparison with Original
 
-```
-multi-pb/
-├── cmd/multipb/          # Go management server
-├── internal/
-│   ├── api/              # HTTP API handlers
-│   ├── config/           # Configuration store
-│   ├── manager/          # Process manager
-│   └── models/           # Data models
-├── multi-frontend/       # SvelteKit dashboard
-├── Dockerfile            # Multi-stage build
-├── docker-compose.yml    # Development config
-├── install.sh            # Installation script
-└── README.md
-```
+| Feature | Original | Simplified |
+|---------|----------|------------|
+| Architecture | Go server + SvelteKit frontend | Shell scripts only |
+| Routing | Subdomain-based | Path-based (default) |
+| Management | Web dashboard | CLI commands |
+| Ports | Multiple (80, 443, 8080) | Single port (25983) |
+| Dependencies | Go, Node, pnpm, Caddy | Caddy, supervisord, shell |
+| DNS Required | Yes (wildcard) | No |
+| Complexity | High | Minimal |
+| Image Size | ~500MB+ | ~100MB |
 
-## DNS Setup
+## Contributing
 
-For production, configure wildcard DNS:
-
-```
-*.pb.yourdomain.com  A  <your-vps-ip>
-```
-
-Or if using the root domain:
-
-```
-*.yourdomain.com  A  <your-vps-ip>
-```
+Contributions welcome! This project prioritizes simplicity and reliability over features.
 
 ## License
 
