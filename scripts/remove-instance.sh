@@ -31,8 +31,8 @@ fi
 
 # Stop supervisord process
 if command -v supervisorctl >/dev/null 2>&1 && [ -S /var/run/supervisor.sock ]; then
-    supervisorctl stop "pb-${INSTANCE_NAME}" >/dev/null 2>&1 || true
-    supervisorctl remove "pb-${INSTANCE_NAME}" >/dev/null 2>&1 || true
+    supervisorctl -c /etc/supervisor/supervisord.conf -s unix:///var/run/supervisor.sock stop "pb-${INSTANCE_NAME}" >/dev/null 2>&1 || true
+    supervisorctl -c /etc/supervisor/supervisord.conf -s unix:///var/run/supervisor.sock remove "pb-${INSTANCE_NAME}" >/dev/null 2>&1 || true
     echo "Instance stopped via supervisord"
 fi
 

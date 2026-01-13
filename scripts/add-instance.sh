@@ -125,14 +125,15 @@ EOF
 echo "Supervisord config created: $SUPERVISOR_CONF"
 
 # Reload supervisord
-if command -v supervisorctl >/dev/null 2>&1; then
+SUPERVISORCTL="supervisorctl -c /etc/supervisor/supervisord.conf -s unix:///var/run/supervisor.sock"
+if command -v supervisorctl >/dev/null 2>&1 && [ -S /var/run/supervisor.sock ]; then
     # Check if supervisord is actually running (with retry for startup timing)
     SUPERVISOR_READY=false
     MAX_RETRIES=10
     
     echo "Checking supervisord status..."
     for i in $(seq 1 $MAX_RETRIES); do
-        if supervisorctl status >/dev/null 2>&1; then
+        if $SUPERVISORCTL status >/dev/null 2>&1; then
             SUPERVISOR_READY=true
             break
         fi
@@ -146,11 +147,11 @@ if command -v supervisorctl >/dev/null 2>&1; then
     
     if [ "$SUPERVISOR_READY" = true ]; then
         echo "Reloading supervisord configuration..."
-        supervisorctl reread >/dev/null 2>&1
-        supervisorctl update >/dev/null 2>&1
+        $SUPERVISORCTL reread >/dev/null 2>&1
+        $SUPERVISORCTL update >/dev/null 2>&1
         
         # Try to start the instance
-        if supervisorctl start "pb-${INSTANCE_NAME}" >/dev/null 2>&1; then
+        if $SUPERVISORCTL start "pb-${INSTANCE_NAME}" >/dev/null 2>&1; then
             echo "Instance started via supervisord"
         else
             echo "Warning: Could not start instance (will start on next container restart)"
@@ -167,10 +168,58 @@ fi
 # Regenerate Caddy config
 /usr/local/bin/reload-proxy.sh
 
+# Get the actual port (from environment or default)
+ACTUAL_PORT="${MULTIPB_PORT:-25983}"
+
+# Set default admin credentials if not provided
+if [ -z "$ADMIN_EMAIL" ]; then
+    ADMIN_EMAIL="admin@${INSTANCE_NAME}.local"
+fi
+if [ -z "$ADMIN_PASSWORD" ]; then
+    ADMIN_PASSWORD="changeme123"
+fi
+
+# Check if database exists - if not, we need to run migration first
+DB_FILE="$INSTANCE_DIR/data.db"
+NEEDS_MIGRATION=false
+if [ ! -f "$DB_FILE" ]; then
+    NEEDS_MIGRATION=true
+    echo "Initializing database..."
+    if ! /usr/local/bin/pocketbase migrate up --dir="$INSTANCE_DIR" >/dev/null 2>&1; then
+        echo "Warning: Migration failed, PocketBase will auto-migrate on start"
+    fi
+fi
+
+# Wait for PocketBase to be ready if it's running
+if [ "$SUPERVISOR_READY" = true ]; then
+    echo "Waiting for PocketBase to initialize..."
+    MAX_WAIT=15
+    WAIT_COUNT=0
+    while [ ! -f "$DB_FILE" ] || [ ! -s "$DB_FILE" ]; do
+        if [ $WAIT_COUNT -ge $MAX_WAIT ]; then
+            echo "Warning: Database not ready after ${MAX_WAIT}s, continuing anyway..."
+            break
+        fi
+        sleep 1
+        WAIT_COUNT=$((WAIT_COUNT + 1))
+    done
+    # Give it an extra moment to fully initialize
+    sleep 2
+fi
+
+# Create admin user
+echo "Creating admin user..."
+if /usr/local/bin/pocketbase superuser create "$ADMIN_EMAIL" "$ADMIN_PASSWORD" --dir="$INSTANCE_DIR" >/dev/null 2>&1; then
+    ADMIN_CREATED=true
+else
+    ADMIN_CREATED=false
+    echo "Note: Admin user creation failed (may already exist or instance not ready)"
+fi
+
 echo ""
 echo "✓ Instance '$INSTANCE_NAME' is ready!"
-echo "  Access at: http://<host>:\${MULTIPB_PORT}/${INSTANCE_NAME}/"
-if [ -n "$ADMIN_EMAIL" ] && [ -n "$ADMIN_PASSWORD" ]; then
-    echo "  Admin setup will use provided credentials"
-    echo "  (Note: Auto-setup not yet implemented, please configure manually)"
+echo "  PocketBase instance: http://localhost:${ACTUAL_PORT}/${INSTANCE_NAME}/_/"
+if [ "$ADMIN_CREATED" = true ]; then
+    echo "  Admin email: $ADMIN_EMAIL"
+    echo "  Admin password: $ADMIN_PASSWORD"
 fi

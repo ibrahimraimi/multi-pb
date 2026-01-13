@@ -23,7 +23,7 @@ fi
 
 # Start via supervisord
 if command -v supervisorctl >/dev/null 2>&1 && [ -S /var/run/supervisor.sock ]; then
-    if supervisorctl start "pb-${INSTANCE_NAME}" >/dev/null 2>&1; then
+    if supervisorctl -c /etc/supervisor/supervisord.conf -s unix:///var/run/supervisor.sock start "pb-${INSTANCE_NAME}" >/dev/null 2>&1; then
         echo "✓ Instance '$INSTANCE_NAME' started"
     else
         echo "Warning: Could not start instance via supervisord (will start on next container restart)"

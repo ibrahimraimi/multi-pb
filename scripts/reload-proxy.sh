@@ -35,8 +35,8 @@ if [ -f "$MANIFEST_FILE" ] && command -v jq >/dev/null 2>&1; then
     # Extract instance list for /_instances endpoint
     INSTANCE_LIST=$(jq -c 'keys' "$MANIFEST_FILE" || echo "[]")
     
-    # Add route for each instance
-    jq -r 'to_entries[] | "    # Instance: \(.key)\n    handle /\(.key)/* {\n        uri strip_prefix /\(.key)\n        reverse_proxy 127.0.0.1:\(.value.port)\n    }\n"' "$MANIFEST_FILE" >> "$CADDYFILE"
+    # Add route for each instance (handles both /name and /name/*)
+    jq -r 'to_entries[] | "    # Instance: \(.key)\n    handle /\(.key)* {\n        uri strip_prefix /\(.key)\n        reverse_proxy 127.0.0.1:\(.value.port)\n    }\n"' "$MANIFEST_FILE" >> "$CADDYFILE"
 else
     INSTANCE_LIST="[]"
     echo "    # No instances configured yet" >> "$CADDYFILE"

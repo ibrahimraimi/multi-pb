@@ -23,7 +23,7 @@ fi
 
 # Stop via supervisord
 if command -v supervisorctl >/dev/null 2>&1 && [ -S /var/run/supervisor.sock ]; then
-    if supervisorctl stop "pb-${INSTANCE_NAME}" >/dev/null 2>&1; then
+    if supervisorctl -c /etc/supervisor/supervisord.conf -s unix:///var/run/supervisor.sock stop "pb-${INSTANCE_NAME}" >/dev/null 2>&1; then
         echo "✓ Instance '$INSTANCE_NAME' stopped"
     else
         echo "Warning: Could not stop instance via supervisord (may already be stopped)"
