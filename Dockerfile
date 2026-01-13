@@ -2,15 +2,18 @@
 # Alpine-based with minimal dependencies
 FROM alpine:3.19
 
-# Install dependencies
+# Install basic dependencies first
 RUN apk add --no-cache \
     ca-certificates \
     curl \
     unzip \
     supervisor \
-    caddy \
     jq \
     bash
+
+# Install Caddy from official static binary (more reliable than Alpine package)
+RUN curl -fsSL https://caddyserver.com/api/download?os=linux&arch=amd64 -o /usr/local/bin/caddy && \
+    chmod +x /usr/local/bin/caddy
 
 # Detect architecture and download appropriate PocketBase binary
 ARG PB_VERSION=0.23.4
