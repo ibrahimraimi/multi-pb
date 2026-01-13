@@ -78,7 +78,8 @@ if [ -f "$MANIFEST_FILE" ] && command -v jq >/dev/null 2>&1; then
     if [ "$INSTANCE_COUNT" -gt 0 ]; then
         echo "Found $INSTANCE_COUNT instance(s) to restore"
         
-        jq -r 'to_entries[] | "\(.key) \(.value.port)"' "$MANIFEST_FILE" | while read -r instance_name port; do
+        # Use process substitution to avoid subshell issue
+        while read -r instance_name port; do
             INSTANCE_DIR="${MULTIPB_DATA_DIR}/${instance_name}"
             mkdir -p "$INSTANCE_DIR"
             
@@ -103,7 +104,7 @@ environment=HOME="/root"
 EOF
                 echo "  - $instance_name (port $port)"
             fi
-        done
+        done < <(jq -r 'to_entries[] | "\(.key) \(.value.port)"' "$MANIFEST_FILE")
     else
         echo "No instances to restore"
     fi

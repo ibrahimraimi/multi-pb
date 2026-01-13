@@ -54,14 +54,30 @@ if grep -q "\"$INSTANCE_NAME\"" "$MANIFEST_FILE"; then
     exit 1
 fi
 
-# Find next available port
+# Find next available port - optimized version
 NEXT_PORT=$MIN_PORT
-while [ $NEXT_PORT -le $MAX_PORT ]; do
-    if ! grep -q ":$NEXT_PORT" "$MANIFEST_FILE"; then
-        break
-    fi
-    NEXT_PORT=$((NEXT_PORT + 1))
-done
+
+if command -v jq >/dev/null 2>&1; then
+    # Extract all used ports and sort them
+    USED_PORTS=$(jq -r '.[] | .port' "$MANIFEST_FILE" 2>/dev/null | sort -n || echo "")
+    
+    # Find first available port
+    for port in $USED_PORTS; do
+        if [ $NEXT_PORT -eq $port ]; then
+            NEXT_PORT=$((NEXT_PORT + 1))
+        elif [ $NEXT_PORT -lt $port ]; then
+            break
+        fi
+    done
+else
+    # Fallback: simple linear search
+    while [ $NEXT_PORT -le $MAX_PORT ]; do
+        if ! grep -q ":$NEXT_PORT" "$MANIFEST_FILE"; then
+            break
+        fi
+        NEXT_PORT=$((NEXT_PORT + 1))
+    done
+fi
 
 if [ $NEXT_PORT -gt $MAX_PORT ]; then
     echo "Error: No available ports in range $MIN_PORT-$MAX_PORT"

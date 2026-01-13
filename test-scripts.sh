@@ -23,6 +23,18 @@ echo "{}" > "$MANIFEST_FILE"
 
 echo "✓ Test environment initialized"
 
+# Test 0: Check for jq availability (hard requirement)
+echo ""
+echo "Test 0: Checking for jq..."
+if ! command -v jq >/dev/null 2>&1; then
+    echo "✗ jq is required but not installed"
+    echo "  Install with: apt-get install jq (Debian/Ubuntu)"
+    echo "            or: apk add jq (Alpine)"
+    echo "            or: yum install jq (RHEL/CentOS)"
+    exit 1
+fi
+echo "✓ jq is available"
+
 # Test 1: Check script syntax
 echo ""
 echo "Test 1: Checking script syntax..."
@@ -38,23 +50,15 @@ echo "✓ All scripts have valid syntax"
 echo ""
 echo "Test 2: Testing manifest operations..."
 
-# Mock add-instance functionality (without supervisorctl)
 INSTANCE_NAME="test1"
 NEXT_PORT=30000
 
-# Test jq availability
-if ! command -v jq >/dev/null 2>&1; then
-    echo "Note: jq not available, testing basic functionality only"
-    # Test basic manifest without jq
-    echo '{"test1":{"port":30000,"status":"running"}}' > "$MANIFEST_FILE"
-else
-    # Add instance to manifest
-    TMP_FILE=$(mktemp)
-    jq --arg name "$INSTANCE_NAME" --argjson port "$NEXT_PORT" \
-        '.[$name] = {"port": $port, "status": "running", "created": (now | strftime("%Y-%m-%dT%H:%M:%SZ"))}' \
-        "$MANIFEST_FILE" > "$TMP_FILE"
-    mv "$TMP_FILE" "$MANIFEST_FILE"
-fi
+# Add instance to manifest
+TMP_FILE=$(mktemp)
+jq --arg name "$INSTANCE_NAME" --argjson port "$NEXT_PORT" \
+    '.[$name] = {"port": $port, "status": "running", "created": (now | strftime("%Y-%m-%dT%H:%M:%SZ"))}' \
+    "$MANIFEST_FILE" > "$TMP_FILE"
+mv "$TMP_FILE" "$MANIFEST_FILE"
 
 # Verify manifest
 if grep -q "\"test1\"" "$MANIFEST_FILE"; then
@@ -68,48 +72,63 @@ fi
 echo ""
 echo "Test 3: Testing port assignment..."
 
-if command -v jq >/dev/null 2>&1; then
-    # Add another instance
-    INSTANCE_NAME="test2"
-    NEXT_PORT=30001
-    TMP_FILE=$(mktemp)
-    jq --arg name "$INSTANCE_NAME" --argjson port "$NEXT_PORT" \
-        '.[$name] = {"port": $port, "status": "running", "created": (now | strftime("%Y-%m-%dT%H:%M:%SZ"))}' \
-        "$MANIFEST_FILE" > "$TMP_FILE"
-    mv "$TMP_FILE" "$MANIFEST_FILE"
+# Add another instance
+INSTANCE_NAME="test2"
+NEXT_PORT=30001
+TMP_FILE=$(mktemp)
+jq --arg name "$INSTANCE_NAME" --argjson port "$NEXT_PORT" \
+    '.[$name] = {"port": $port, "status": "running", "created": (now | strftime("%Y-%m-%dT%H:%M:%SZ"))}' \
+    "$MANIFEST_FILE" > "$TMP_FILE"
+mv "$TMP_FILE" "$MANIFEST_FILE"
 
-    if [ "$(jq 'length' "$MANIFEST_FILE")" -eq 2 ]; then
-        echo "✓ Multiple instances tracked correctly"
-    else
-        echo "✗ Failed to track multiple instances"
-        exit 1
-    fi
+if [ "$(jq 'length' "$MANIFEST_FILE")" -eq 2 ]; then
+    echo "✓ Multiple instances tracked correctly"
 else
-    echo "⊘ Skipping (jq not available)"
+    echo "✗ Failed to track multiple instances"
+    exit 1
 fi
 
-# Test 4: Remove instance
+# Test 4: Optimized port search
 echo ""
-echo "Test 4: Testing instance removal..."
+echo "Test 4: Testing optimized port search..."
 
-if command -v jq >/dev/null 2>&1; then
-    TMP_FILE=$(mktemp)
-    jq 'del(.test1)' "$MANIFEST_FILE" > "$TMP_FILE"
-    mv "$TMP_FILE" "$MANIFEST_FILE"
+# Test the optimized port assignment algorithm
+USED_PORTS=$(jq -r '.[] | .port' "$MANIFEST_FILE" 2>/dev/null | sort -n)
+NEXT_PORT=30000
 
-    if ! grep -q "\"test1\"" "$MANIFEST_FILE" && grep -q "\"test2\"" "$MANIFEST_FILE"; then
-        echo "✓ Instance removed correctly"
-    else
-        echo "✗ Failed to remove instance"
-        exit 1
+for port in $USED_PORTS; do
+    if [ $NEXT_PORT -eq $port ]; then
+        NEXT_PORT=$((NEXT_PORT + 1))
+    elif [ $NEXT_PORT -lt $port ]; then
+        break
     fi
+done
+
+if [ $NEXT_PORT -eq 30002 ]; then
+    echo "✓ Port search algorithm works correctly"
 else
-    echo "⊘ Skipping (jq not available)"
+    echo "✗ Port search algorithm failed (expected 30002, got $NEXT_PORT)"
+    exit 1
 fi
 
-# Test 5: Caddyfile generation
+# Test 5: Remove instance
 echo ""
-echo "Test 5: Testing Caddyfile generation..."
+echo "Test 5: Testing instance removal..."
+
+TMP_FILE=$(mktemp)
+jq 'del(.test1)' "$MANIFEST_FILE" > "$TMP_FILE"
+mv "$TMP_FILE" "$MANIFEST_FILE"
+
+if ! grep -q "\"test1\"" "$MANIFEST_FILE" && grep -q "\"test2\"" "$MANIFEST_FILE"; then
+    echo "✓ Instance removed correctly"
+else
+    echo "✗ Failed to remove instance"
+    exit 1
+fi
+
+# Test 6: Caddyfile generation
+echo ""
+echo "Test 6: Testing Caddyfile generation..."
 
 cat > /tmp/multipb-test/test-caddy-gen.sh << 'EOFSCRIPT'
 #!/bin/sh
@@ -134,12 +153,8 @@ cat > "$CADDYFILE" << 'EOF'
 
 EOF
 
-if [ -f "$MANIFEST_FILE" ] && command -v jq >/dev/null 2>&1; then
-    INSTANCE_LIST=$(jq -c 'keys' "$MANIFEST_FILE" || echo "[]")
-    jq -r 'to_entries[] | "    handle /\(.key)/* {\n        uri strip_prefix /\(.key)\n        reverse_proxy 127.0.0.1:\(.value.port)\n    }\n"' "$MANIFEST_FILE" >> "$CADDYFILE"
-else
-    INSTANCE_LIST="[]"
-fi
+INSTANCE_LIST=$(jq -c 'keys' "$MANIFEST_FILE")
+jq -r 'to_entries[] | "    handle /\(.key)/* {\n        uri strip_prefix /\(.key)\n        reverse_proxy 127.0.0.1:\(.value.port)\n    }\n"' "$MANIFEST_FILE" >> "$CADDYFILE"
 
 cat >> "$CADDYFILE" << 'EOF'
 
@@ -156,17 +171,8 @@ EOFSCRIPT
 chmod +x /tmp/multipb-test/test-caddy-gen.sh
 /tmp/multipb-test/test-caddy-gen.sh
 
-if [ -f /tmp/multipb-test/Caddyfile ]; then
-    if command -v jq >/dev/null 2>&1; then
-        if grep -q "test2" /tmp/multipb-test/Caddyfile; then
-            echo "✓ Caddyfile generated correctly"
-        else
-            echo "✗ Failed to generate Caddyfile with instance routes"
-            exit 1
-        fi
-    else
-        echo "✓ Caddyfile generated (jq not available for full test)"
-    fi
+if [ -f /tmp/multipb-test/Caddyfile ] && grep -q "test2" /tmp/multipb-test/Caddyfile; then
+    echo "✓ Caddyfile generated correctly"
     echo ""
     echo "Generated Caddyfile:"
     cat /tmp/multipb-test/Caddyfile

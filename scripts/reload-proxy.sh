@@ -61,8 +61,12 @@ echo "Caddyfile generated at: $CADDYFILE"
 # Reload Caddy if running
 if pgrep -x caddy > /dev/null; then
     if command -v caddy >/dev/null 2>&1; then
-        caddy reload --config "$CADDYFILE" --adapter caddyfile 2>/dev/null || echo "Note: Caddy reload attempted"
-        echo "✓ Caddy configuration reloaded"
+        # Attempt reload and capture any errors for logging
+        if ! caddy reload --config "$CADDYFILE" --adapter caddyfile 2>&1; then
+            echo "Warning: Caddy reload encountered an issue. Check logs at /var/log/multipb/caddy.err.log"
+        else
+            echo "✓ Caddy configuration reloaded"
+        fi
     fi
 else
     echo "Note: Caddy not running, will use config on next start"

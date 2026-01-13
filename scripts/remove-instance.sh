@@ -2,17 +2,24 @@
 set -e
 
 # remove-instance.sh - Stop and remove a PocketBase instance
-# Usage: remove-instance.sh <name>
+# Usage: remove-instance.sh <name> [--delete-data]
 
 MULTIPB_DATA_DIR="${MULTIPB_DATA_DIR:-/var/multipb/data}"
 MANIFEST_FILE="/var/multipb/instances.json"
+DELETE_DATA=false
 
+# Parse arguments
 if [ $# -lt 1 ]; then
-    echo "Usage: remove-instance.sh <name>"
+    echo "Usage: remove-instance.sh <name> [--delete-data]"
     exit 1
 fi
 
 INSTANCE_NAME="$1"
+
+# Check for --delete-data flag
+if [ "$2" = "--delete-data" ]; then
+    DELETE_DATA=true
+fi
 
 echo "Removing instance: $INSTANCE_NAME"
 
@@ -48,20 +55,19 @@ fi
 
 echo "Removed from manifest"
 
-# Optionally remove data directory (ask for confirmation)
-read -p "Delete data directory? (y/N): " confirm
-case "$confirm" in
-    [Yy]*)
-        INSTANCE_DIR="$MULTIPB_DATA_DIR/$INSTANCE_NAME"
-        if [ -d "$INSTANCE_DIR" ]; then
-            rm -rf "$INSTANCE_DIR"
-            echo "Data directory deleted: $INSTANCE_DIR"
-        fi
-        ;;
-    *)
-        echo "Data directory preserved: $MULTIPB_DATA_DIR/$INSTANCE_NAME"
-        ;;
-esac
+# Handle data directory deletion
+INSTANCE_DIR="$MULTIPB_DATA_DIR/$INSTANCE_NAME"
+if [ "$DELETE_DATA" = true ]; then
+    if [ -d "$INSTANCE_DIR" ]; then
+        rm -rf "$INSTANCE_DIR"
+        echo "Data directory deleted: $INSTANCE_DIR"
+    fi
+else
+    if [ -d "$INSTANCE_DIR" ]; then
+        echo "Data directory preserved: $INSTANCE_DIR"
+        echo "To delete it later: rm -rf $INSTANCE_DIR"
+    fi
+fi
 
 # Regenerate Caddy config
 /usr/local/bin/reload-proxy.sh
