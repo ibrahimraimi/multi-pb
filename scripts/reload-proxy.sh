@@ -14,7 +14,7 @@ echo "Regenerating Caddy configuration..."
 cat > "$CADDYFILE" << 'EOF'
 {
     auto_https off
-    admin off
+    admin localhost:2019
 }
 
 :${MULTIPB_PORT} {
