@@ -1,9 +1,14 @@
 <script lang="ts">
 	import './layout.css';
-	import favicon from '$lib/assets/favicon.svg';
 
 	let { children } = $props();
 </script>
 
-<svelte:head><link rel="icon" href={favicon} /></svelte:head>
-{@render children()}
+<svelte:head>
+	<title>Multi-PB</title>
+	<meta name="description" content="Multi-tenant PocketBase Management Platform" />
+</svelte:head>
+
+<div class="min-h-screen bg-gray-900 text-gray-100">
+	{@render children()}
+</div>

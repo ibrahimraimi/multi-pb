@@ -1,27 +1,62 @@
-# Multi-PocketBase Docker
+# Multi-PB
 
-A single Docker container that dynamically hosts multiple isolated PocketBase instances behind Caddy with automatic SSL.
+A multi-tenant PocketBase management platform. Run multiple isolated PocketBase instances behind a single reverse proxy with automatic SSL.
 
 ## Quick Start
 
+### Install on VPS
+
 ```bash
-# Create tenant directories
-mkdir -p pb_data/app1 pb_data/app2
-
-# Build and run
-docker compose up -d --build
-
-# Access instances (using localhost.direct for local SSL testing)
-# https://app1.localhost.direct/_/
-# https://app2.localhost.direct/_/
+curl -fsSL https://raw.githubusercontent.com/your-repo/multi-pb/main/install.sh | bash
 ```
 
-## How It Works
+Or clone and run locally:
 
-1. **Drop-in Architecture**: Add a folder to `pb_data/`, restart the container, and a new PocketBase instance is available
-2. **Automatic Routing**: Folder name becomes subdomain (`myapp/` → `myapp.yourdomain.com`)
-3. **Automatic SSL**: Caddy handles ACME certificates automatically
-4. **Process Management**: Supervisord manages all PocketBase instances + Caddy
+```bash
+git clone https://github.com/your-repo/multi-pb.git
+cd multi-pb
+./install.sh
+```
+
+### What happens:
+1. **Prompts for configuration** (domain, port, data directory)
+2. **Creates docker-compose.yml** with your settings
+3. **Starts the container**
+4. **Opens the dashboard** for onboarding
+
+## Features
+
+- **Dynamic tenant management** - Create/delete PocketBase instances via dashboard
+- **Automatic routing** - Each tenant gets a subdomain (`myapp.yourdomain.com`)
+- **Hot reload** - No container restart needed when adding tenants
+- **Flexible deployment** - Works behind any reverse proxy or standalone
+- **Web dashboard** - Modern UI for managing instances
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────┐
+│                Your VPS                     │
+│  ┌───────────────────────────────────────┐  │
+│  │    Your Reverse Proxy (optional)      │  │
+│  │    (Traefik, nginx, Caddy, etc.)      │  │
+│  └──────────────────┬────────────────────┘  │
+│                     │                       │
+│  ┌──────────────────▼────────────────────┐  │
+│  │         Multi-PB Container            │  │
+│  │  ┌─────────────────────────────────┐  │  │
+│  │  │           Caddy                 │  │  │
+│  │  │   (internal routing + SSL)      │  │  │
+│  │  └──────────────┬──────────────────┘  │  │
+│  │                 │                     │  │
+│  │  ┌──────┬───────┴───────┬──────┐     │  │
+│  │  │      │               │      │     │  │
+│  │  ▼      ▼               ▼      ▼     │  │
+│  │ Dashboard  PB-1      PB-2    PB-N    │  │
+│  │ :3000     :8081     :8082   :808N    │  │
+│  └───────────────────────────────────────┘  │
+└─────────────────────────────────────────────┘
+```
 
 ## Configuration
 
@@ -29,54 +64,126 @@ docker compose up -d --build
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DOMAIN_NAME` | `localhost.direct` | Root domain for subdomains |
+| `DOMAIN_NAME` | `localhost.direct` | Base domain for subdomains |
+| `HTTP_PORT` | `8080` | Internal HTTP port |
+| `HTTPS_PORT` | `8443` | Internal HTTPS port (if enabled) |
+| `ENABLE_HTTPS` | `false` | Enable ACME SSL certificates |
 | `ACME_EMAIL` | `admin@example.com` | Email for Let's Encrypt |
+| `DATA_DIR` | `/mnt/data` | Data directory path |
 
-### Production Example
+### Deployment Options
+
+#### Option A: Behind existing reverse proxy (recommended)
+
+Your proxy (Traefik, nginx, Caddy, etc.) handles SSL and routes `*.pb.yourdomain.com` to Multi-PB.
 
 ```yaml
-services:
-  multi-pb:
-    build: .
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - /srv/pocketbase:/mnt/data
-      - caddy_data:/data
-      - caddy_config:/config
-    environment:
-      - DOMAIN_NAME=example.com
-      - ACME_EMAIL=ssl@example.com
+ports:
+  - "127.0.0.1:8080:8080"  # Only accessible locally
+environment:
+  - DOMAIN_NAME=pb.yourdomain.com
+  - ENABLE_HTTPS=false     # Proxy handles SSL
 ```
 
-## Directory Structure
+#### Option B: Standalone with SSL
 
-```
-/mnt/data/
-├── client-a/          → client-a.example.com
-│   ├── pb_data/
-│   └── pb_migrations/
-├── client-b/          → client-b.example.com
-│   └── ...
-└── api/               → api.example.com
-    └── ...
+Multi-PB handles SSL directly (no external proxy needed).
+
+```yaml
+ports:
+  - "80:8080"
+  - "443:8443"
+environment:
+  - DOMAIN_NAME=yourdomain.com
+  - ENABLE_HTTPS=true
+  - ACME_EMAIL=ssl@yourdomain.com
 ```
 
-## Adding/Removing Tenants
+## Usage
+
+### Dashboard
+
+Access the dashboard at:
+- Local: `http://localhost:8080`
+- Production: `https://dashboard.yourdomain.com`
+
+### Create a tenant
+
+1. Click "New Instance" in dashboard
+2. Enter subdomain (e.g., `myapp`)
+3. Click "Create"
+
+The instance is immediately available at `https://myapp.yourdomain.com/_/`
+
+### API
 
 ```bash
-# Add new tenant
-mkdir pb_data/newtenant
-docker compose restart
+# Get status
+curl http://localhost:8080/api/status
 
-# Remove tenant (data preserved)
-rm -rf pb_data/oldtenant
-docker compose restart
+# List tenants
+curl http://localhost:8080/api/tenants
+
+# Create tenant
+curl -X POST http://localhost:8080/api/tenants \
+  -H "Content-Type: application/json" \
+  -d '{"subdomain": "myapp", "name": "My App"}'
+
+# Delete tenant
+curl -X DELETE http://localhost:8080/api/tenants/myapp
+
+# Restart tenant
+curl -X POST http://localhost:8080/api/tenants/myapp/restart
 ```
 
-## Notes
+## Development
 
-- `localhost.direct` is a public DNS that points `*.localhost.direct` to `127.0.0.1` — useful for local SSL testing
-- Each PocketBase instance runs on sequential ports starting from 8081 (internal only)
-- Caddy data volume persists SSL certificates across rebuilds
+```bash
+# Clone
+git clone https://github.com/your-repo/multi-pb.git
+cd multi-pb
+
+# Build and run
+docker compose up -d --build
+
+# View logs
+docker logs -f multi-pb
+
+# Access dashboard
+open http://localhost:8080
+```
+
+### Project Structure
+
+```
+multi-pb/
+├── cmd/multipb/          # Go management server
+├── internal/
+│   ├── api/              # HTTP API handlers
+│   ├── config/           # Configuration store
+│   ├── manager/          # Process manager
+│   └── models/           # Data models
+├── multi-frontend/       # SvelteKit dashboard
+├── Dockerfile            # Multi-stage build
+├── docker-compose.yml    # Development config
+├── install.sh            # Installation script
+└── README.md
+```
+
+## DNS Setup
+
+For production, configure wildcard DNS:
+
+```
+*.pb.yourdomain.com  A  <your-vps-ip>
+```
+
+Or if using the root domain:
+
+```
+*.yourdomain.com  A  <your-vps-ip>
+```
+
+## License
+
+MIT

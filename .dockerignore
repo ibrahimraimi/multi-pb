@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build outputs
+.svelte-kit/
+**/.svelte-kit/
+build/
+**/build/
+dist/
+
+# Data directories
+data/
+pb_data/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Misc
+*.log
+*.md
+!README.md

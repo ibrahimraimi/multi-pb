@@ -1,4 +1,23 @@
-# Stage 1: Build the frontend
+# Stage 1: Build the Go management server
+FROM golang:1.24-alpine AS go-builder
+
+WORKDIR /build
+
+# Install git for go mod
+RUN apk add --no-cache git
+
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source
+COPY cmd/ cmd/
+COPY internal/ internal/
+
+# Build the binary
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o multipb ./cmd/multipb
+
+# Stage 2: Build the frontend
 FROM node:22-alpine AS frontend-builder
 
 WORKDIR /app
@@ -6,14 +25,18 @@ WORKDIR /app
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# Copy frontend source
-COPY multi-frontend/package.json multi-frontend/pnpm-lock.yaml ./
+# Copy package files first for better caching
+COPY multi-frontend/package.json multi-frontend/pnpm-lock.yaml multi-frontend/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
-COPY multi-frontend/ ./
+# Copy source files explicitly to avoid conflicts with node_modules symlinks
+COPY multi-frontend/src ./src
+COPY multi-frontend/static ./static
+COPY multi-frontend/svelte.config.js multi-frontend/vite.config.ts multi-frontend/tsconfig.json ./
+COPY multi-frontend/.prettierrc multi-frontend/.npmrc multi-frontend/eslint.config.js ./
 RUN pnpm build
 
-# Stage 2: Runtime
+# Stage 3: Runtime
 FROM alpine:latest
 
 # Install dependencies
@@ -21,10 +44,7 @@ RUN apk add --no-cache \
     ca-certificates \
     curl \
     bash \
-    supervisor \
-    caddy \
-    unzip \
-    nodejs
+    caddy
 
 # Download PocketBase
 ARG PB_VERSION=0.23.4
@@ -36,17 +56,26 @@ RUN curl -fsSL "https://github.com/pocketbase/pocketbase/releases/download/v${PB
     && rm -rf /tmp/*
 
 # Create directories
-RUN mkdir -p /mnt/data /etc/supervisor.d /var/log/supervisor /app/dashboard
+RUN mkdir -p /mnt/data /var/log/multipb /app/dashboard
 
-# Copy built frontend
+# Copy Go binary
+COPY --from=go-builder /build/multipb /usr/local/bin/multipb
+
+# Copy built frontend to be served by the Go server
 COPY --from=frontend-builder /app/build /app/dashboard
 
-# Copy config templates and entrypoint
-COPY Caddyfile.template /etc/Caddyfile.template
-COPY supervisord.conf.template /etc/supervisord.conf.template
+# Copy entrypoint
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-EXPOSE 80 443
+# Environment defaults
+ENV DATA_DIR=/mnt/data \
+    HTTP_PORT=8080 \
+    HTTPS_PORT=8443 \
+    DOMAIN_NAME=localhost.direct \
+    ENABLE_HTTPS=false \
+    ACME_EMAIL=admin@example.com
+
+EXPOSE 8080 8443
 
 ENTRYPOINT ["/entrypoint.sh"]
