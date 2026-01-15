@@ -7,6 +7,7 @@ RUN apk add --no-cache \
     ca-certificates \
     curl \
     unzip \
+    zip \
     python3 \
     supervisor \
     jq \
@@ -38,6 +39,7 @@ RUN ARCH=$(uname -m) && \
 
 # Create directories
 RUN mkdir -p /var/multipb/data \
+    /var/multipb/backups \
     /var/log/multipb \
     /etc/caddy \
     /etc/supervisor/conf.d

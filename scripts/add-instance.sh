@@ -13,6 +13,7 @@ MAX_PORT=39999
 INSTANCE_NAME=""
 ADMIN_EMAIL=""
 ADMIN_PASSWORD=""
+CUSTOM_PORT=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -22,6 +23,10 @@ while [ $# -gt 0 ]; do
             ;;
         --password)
             ADMIN_PASSWORD="$2"
+            shift 2
+            ;;
+        --port)
+            CUSTOM_PORT="$2"
             shift 2
             ;;
         *)
@@ -54,12 +59,52 @@ if grep -q "\"$INSTANCE_NAME\"" "$MANIFEST_FILE"; then
     exit 1
 fi
 
-# Find next available port - optimized version
-NEXT_PORT=$MIN_PORT
+# Get list of used ports
+get_used_ports() {
+    if command -v jq >/dev/null 2>&1; then
+        jq -r '.[] | .port' "$MANIFEST_FILE" 2>/dev/null | sort -n || echo ""
+    else
+        grep -oE '"port":[0-9]+' "$MANIFEST_FILE" 2>/dev/null | grep -oE '[0-9]+' | sort -n || echo ""
+    fi
+}
 
-if command -v jq >/dev/null 2>&1; then
-    # Extract all used ports and sort them
-    USED_PORTS=$(jq -r '.[] | .port' "$MANIFEST_FILE" 2>/dev/null | sort -n || echo "")
+# Check if port is available
+is_port_available() {
+    local port=$1
+    local used_ports=$(get_used_ports)
+    for used in $used_ports; do
+        if [ "$port" -eq "$used" ]; then
+            return 1
+        fi
+    done
+    return 0
+}
+
+# Determine port to use
+if [ -n "$CUSTOM_PORT" ]; then
+    # Validate custom port is a number
+    if ! echo "$CUSTOM_PORT" | grep -qE '^[0-9]+$'; then
+        echo "Error: Port must be a number"
+        exit 1
+    fi
+    
+    # Validate port range
+    if [ "$CUSTOM_PORT" -lt "$MIN_PORT" ] || [ "$CUSTOM_PORT" -gt "$MAX_PORT" ]; then
+        echo "Error: Port must be between $MIN_PORT and $MAX_PORT"
+        exit 1
+    fi
+    
+    # Check if port is already in use
+    if ! is_port_available "$CUSTOM_PORT"; then
+        echo "Error: Port $CUSTOM_PORT is already in use by another instance"
+        exit 1
+    fi
+    
+    NEXT_PORT=$CUSTOM_PORT
+else
+    # Find next available port - optimized version
+    NEXT_PORT=$MIN_PORT
+    USED_PORTS=$(get_used_ports)
     
     # Find first available port
     for port in $USED_PORTS; do
@@ -69,19 +114,11 @@ if command -v jq >/dev/null 2>&1; then
             break
         fi
     done
-else
-    # Fallback: simple linear search
-    while [ $NEXT_PORT -le $MAX_PORT ]; do
-        if ! grep -q ":$NEXT_PORT" "$MANIFEST_FILE"; then
-            break
-        fi
-        NEXT_PORT=$((NEXT_PORT + 1))
-    done
-fi
-
-if [ $NEXT_PORT -gt $MAX_PORT ]; then
-    echo "Error: No available ports in range $MIN_PORT-$MAX_PORT"
-    exit 1
+    
+    if [ $NEXT_PORT -gt $MAX_PORT ]; then
+        echo "Error: No available ports in range $MIN_PORT-$MAX_PORT"
+        exit 1
+    fi
 fi
 
 # Create instance data directory
