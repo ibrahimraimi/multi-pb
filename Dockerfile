@@ -10,7 +10,9 @@ RUN apk add --no-cache \
     python3 \
     supervisor \
     jq \
-    bash
+    bash \
+    nodejs \
+    npm
 
 # Install Caddy from official static binary (more reliable than Alpine package)
 RUN curl -fsSL "https://caddyserver.com/api/download?os=linux&arch=amd64" -o /usr/local/bin/caddy && \
@@ -47,6 +49,21 @@ RUN chmod +x /usr/local/bin/*.sh
 # Copy entrypoint
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+
+# Build dashboard
+COPY dashboard /tmp/dashboard
+WORKDIR /tmp/dashboard
+RUN npm install && \
+    npx svelte-kit sync && \
+    npm run build && \
+    mkdir -p /var/www/dashboard && \
+    cp -r build/* /var/www/dashboard/
+
+# Copy API server
+COPY api-server.js /usr/local/bin/api-server.js
+RUN chmod +x /usr/local/bin/api-server.js
+
+WORKDIR /
 
 # Environment defaults
 ENV MULTIPB_PORT=25983 \

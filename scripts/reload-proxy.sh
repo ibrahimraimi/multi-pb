@@ -28,6 +28,30 @@ cat > "$CADDYFILE" << 'EOF'
         respond `{"status":"ok","instances":${INSTANCE_LIST}}` 200
     }
 
+    # API endpoints
+    handle /api/* {
+        reverse_proxy 127.0.0.1:3001
+    }
+
+    # Dashboard - handle root path
+    handle /dashboard {
+        redir /dashboard/ 301
+    }
+
+    # Dashboard - serve static files with SPA fallback
+    handle /dashboard* {
+        uri strip_prefix /dashboard
+        try_files {path} /index.html
+        file_server {
+            root /var/www/dashboard
+        }
+    }
+
+    # Redirect root to dashboard
+    handle / {
+        redir /dashboard 301
+    }
+
 EOF
 
 # Add routes for each instance from manifest

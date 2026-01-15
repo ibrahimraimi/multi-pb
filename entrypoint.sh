@@ -68,6 +68,18 @@ stderr_logfile_maxbytes=10MB
 stdout_logfile_maxbytes=10MB
 user=root
 priority=1
+
+[program:api-server]
+command=/usr/bin/node /usr/local/bin/api-server.js
+autostart=true
+autorestart=true
+startretries=5
+stderr_logfile=/var/log/multipb/api-server.err.log
+stdout_logfile=/var/log/multipb/api-server.log
+stderr_logfile_maxbytes=10MB
+stdout_logfile_maxbytes=10MB
+user=root
+priority=2
 EOF
 fi
 
@@ -115,6 +127,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "Multi-PB is starting..."
 echo ""
 echo "Access at: http://<host>:${MULTIPB_PORT}"
+echo "Dashboard: http://<host>:${MULTIPB_PORT}/dashboard"
 echo "Health check: http://<host>:${MULTIPB_PORT}/_health"
 echo "List instances: http://<host>:${MULTIPB_PORT}/_instances"
 echo ""

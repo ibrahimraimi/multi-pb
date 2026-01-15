@@ -7,6 +7,7 @@ A simple, single-container solution for running multiple isolated PocketBase ins
 - **Single Container** - One Docker container, one port, hundreds of instances
 - **Path-Based Routing** - Access instances via `http://host:port/{instance}/` 
 - **Zero Host Conflicts** - All instances use internal ports, only one external port
+- **Web Dashboard** - Beautiful UI to manage instances, view logs, and monitor status
 - **Simple CLI Management** - Add/remove/start/stop instances with shell commands
 - **Persistent Storage** - Single volume mount preserves all instance data
 - **Automatic Routing** - Caddy reverse proxy auto-configured from manifest
@@ -28,13 +29,28 @@ docker compose up -d
 
 Multi-PB will be running on port `25983` by default.
 
-### 2. Create Your First Instance
+### 2. Access the Dashboard
+
+Open your browser and navigate to:
+```
+http://localhost:25983/dashboard
+```
+
+The dashboard provides a web interface to:
+- View all instances and their status
+- Create new instances
+- Start/stop instances
+- View instance logs
+- Delete instances
+
+### 3. Create Your First Instance
 
 ```bash
 # Add a new PocketBase instance
 docker exec multipb add-instance.sh myapp
 
 # Access it at: http://localhost:25983/myapp/
+# Or use the dashboard at: http://localhost:25983/dashboard
 ```
 
 ### 3. Manage Instances
