@@ -9,17 +9,23 @@ const fsSync = require('fs');
 const path = require('path');
 
 const PORT = 3001;
-const MANIFEST_FILE = '/var/multipb/instances.json';
+const MANIFEST_FILE = '/var/multipb/data/instances.json';
 const DATA_DIR = '/var/multipb/data';
 const LOG_DIR = '/var/log/multipb';
 const BACKUP_DIR = '/var/multipb/backups';
 
 async function execScript(script, args = []) {
+    const cmd = `/usr/local/bin/${script} ${args.join(' ')}`;
+    console.log(`Executing: ${cmd}`);
     try {
-        const cmd = `/usr/local/bin/${script} ${args.join(' ')}`;
         const { stdout, stderr } = await execAsync(cmd);
+        if (stdout) console.log(`stdout: ${stdout.trim()}`);
+        if (stderr) console.error(`stderr: ${stderr.trim()}`);
         return { success: true, stdout, stderr };
     } catch (error) {
+        console.error(`Error executing ${script}: ${error.message}`);
+        if (error.stdout) console.log(`stdout: ${error.stdout.trim()}`);
+        if (error.stderr) console.error(`stderr: ${error.stderr.trim()}`);
         return { success: false, error: error.message, stdout: error.stdout, stderr: error.stderr };
     }
 }
@@ -37,18 +43,18 @@ async function getSystemStats() {
     try {
         const { stdout: loadAvg } = await execAsync('cat /proc/loadavg 2>/dev/null || uptime | grep -oE "load average[s]?: [0-9.]+" | grep -oE "[0-9.]+"');
         const load = parseFloat(loadAvg.split(' ')[0]) || 0;
-        
+
         let memoryPercent = 0;
         try {
             const { stdout: memInfo } = await execAsync('free -m 2>/dev/null | awk \'NR==2{printf "%.1f", $3*100/$2}\'');
             memoryPercent = parseFloat(memInfo) || 0;
-        } catch (e) {}
-        
+        } catch (e) { }
+
         let diskUsage = '0B';
         try {
             const { stdout: du } = await execAsync(`du -sh "${DATA_DIR}" 2>/dev/null | cut -f1`);
             diskUsage = du.trim() || '0B';
-        } catch (e) {}
+        } catch (e) { }
 
         return { load: load.toFixed(2), memoryPercent, diskUsage };
     } catch (e) {
@@ -73,19 +79,21 @@ async function getLogs(instanceName, lineCount = 200) {
     try {
         const logFile = path.join(LOG_DIR, `${instanceName}.log`);
         const errFile = path.join(LOG_DIR, `${instanceName}.err.log`);
-        
+
         let logs = '';
         try {
-            const data = await fs.readFile(logFile, 'utf8');
-            logs = data.split('\n').slice(-lineCount).join('\n');
-        } catch (e) {}
-        
+            const { stdout } = await execAsync(`tail -n ${lineCount} "${logFile}" 2>/dev/null`);
+            logs = stdout;
+        } catch (e) {
+            logs = '(No logs found)';
+        }
+
         let errLogs = '';
         try {
-            const data = await fs.readFile(errFile, 'utf8');
-            errLogs = data.split('\n').slice(-50).join('\n');
-        } catch (e) {}
-        
+            const { stdout } = await execAsync(`tail -n 50 "${errFile}" 2>/dev/null`);
+            errLogs = stdout;
+        } catch (e) { }
+
         return { logs, errLogs };
     } catch (error) {
         return { logs: '', errLogs: `Error: ${error.message}` };
@@ -167,7 +175,7 @@ async function listBackups(instanceName) {
         } catch {
             return [];
         }
-        
+
         const files = await fs.readdir(instanceBackupDir);
         const backups = await Promise.all(
             files.filter(f => f.endsWith('.zip')).map(async (f) => {
@@ -190,25 +198,25 @@ async function listBackups(instanceName) {
 async function createBackup(instanceName) {
     const instanceDir = path.join(DATA_DIR, instanceName);
     const instanceBackupDir = path.join(BACKUP_DIR, instanceName);
-    
+
     // Ensure backup directory exists
     await fs.mkdir(instanceBackupDir, { recursive: true });
-    
+
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const backupName = `backup-${timestamp}.zip`;
     const backupPath = path.join(instanceBackupDir, backupName);
-    
+
     try {
         // PocketBase with --dir puts files directly in instance dir (data.db, pb_migrations, etc.)
         await execAsync(`cd "${instanceDir}" && zip -r "${backupPath}" .`);
         const stat = await fs.stat(backupPath);
-        return { 
-            success: true, 
-            backup: { 
-                name: backupName, 
-                size: formatBytes(stat.size), 
-                created: stat.mtime.toISOString() 
-            } 
+        return {
+            success: true,
+            backup: {
+                name: backupName,
+                size: formatBytes(stat.size),
+                created: stat.mtime.toISOString()
+            }
         };
     } catch (e) {
         return { success: false, error: e.message };
@@ -231,36 +239,36 @@ async function restoreBackup(instanceName, backupName) {
     const instanceDir = path.join(DATA_DIR, instanceName);
     const backupPath = path.join(BACKUP_DIR, instanceName, backupName);
     const tempBackupDir = path.join(DATA_DIR, `${instanceName}_restore_backup_${Date.now()}`);
-    
+
     try {
         // Stop instance first
         await execScript('stop-instance.sh', [instanceName]);
-        
+
         // Backup current data by renaming entire instance dir
         try {
             await fs.rename(instanceDir, tempBackupDir);
             await fs.mkdir(instanceDir, { recursive: true });
-        } catch (e) {}
-        
+        } catch (e) { }
+
         // Extract backup directly to instance dir
         await execAsync(`cd "${instanceDir}" && unzip -o "${backupPath}"`);
-        
+
         // Start instance
         await execScript('start-instance.sh', [instanceName]);
-        
+
         // Clean up old data after successful restore
         try {
             await fs.rm(tempBackupDir, { recursive: true });
-        } catch (e) {}
-        
+        } catch (e) { }
+
         return { success: true };
     } catch (e) {
         // Try to restore old data
         try {
             await fs.rm(instanceDir, { recursive: true });
             await fs.rename(tempBackupDir, instanceDir);
-        } catch (e2) {}
-        
+        } catch (e2) { }
+
         await execScript('start-instance.sh', [instanceName]);
         return { success: false, error: e.message };
     }
@@ -279,15 +287,15 @@ async function getInstanceDetails(name, port) {
     const instanceDir = path.join(DATA_DIR, name);
     const size = await getDirSize(instanceDir);
     const health = await getInstanceHealth(port);
-    
+
     // Count files in pb_data
     let recordsEstimate = 0;
     try {
         const dbPath = path.join(instanceDir, 'pb_data', 'data.db');
         const stat = await fs.stat(dbPath);
         recordsEstimate = Math.floor(stat.size / 1024); // rough estimate
-    } catch (e) {}
-    
+    } catch (e) { }
+
     return {
         size,
         healthy: health !== null,
@@ -306,6 +314,8 @@ const server = http.createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    console.log(`${new Date().toISOString()} ${req.method} ${req.url}`);
 
     if (req.method === 'OPTIONS') {
         res.writeHead(200);
@@ -353,9 +363,9 @@ const server = http.createServer(async (req, res) => {
             const usedPorts = Object.values(manifest).map(i => i.port);
             const available = !usedPorts.includes(port);
             const inRange = port >= 30000 && port <= 39999;
-            return sendJson(200, { 
-                port, 
-                available: available && inRange, 
+            return sendJson(200, {
+                port,
+                available: available && inRange,
                 inRange,
                 inUse: usedPorts.includes(port)
             });
@@ -399,11 +409,11 @@ const server = http.createServer(async (req, res) => {
 
             const result = await execScript('add-instance.sh', args);
             if (result.success) {
-                return sendJson(200, { 
-                    success: true, 
-                    credentials: { 
-                        email: email || `admin@${name}.local`, 
-                        password: password || 'changeme123' 
+                return sendJson(200, {
+                    success: true,
+                    credentials: {
+                        email: email || `admin@${name}.local`,
+                        password: password || 'changeme123'
                     }
                 });
             }
@@ -416,11 +426,11 @@ const server = http.createServer(async (req, res) => {
             const name = instanceMatch[1];
             const manifest = await readManifest();
             if (!manifest[name]) return sendJson(404, { error: 'Instance not found' });
-            
+
             const data = manifest[name];
             const details = await getInstanceDetails(name, data.port);
             const backups = await listBackups(name);
-            
+
             return sendJson(200, {
                 name,
                 port: data.port,
@@ -476,7 +486,7 @@ const server = http.createServer(async (req, res) => {
         }
 
         // === BACKUPS ===
-        
+
         // GET /api/instances/:name/backups
         const backupsMatch = pathname.match(/^\/api\/instances\/([^\/]+)\/backups$/);
         if (backupsMatch && req.method === 'GET') {
@@ -516,7 +526,7 @@ const server = http.createServer(async (req, res) => {
         if (backupDownloadMatch && req.method === 'GET') {
             const [, name, backupName] = backupDownloadMatch;
             const backupPath = path.join(BACKUP_DIR, name, backupName);
-            
+
             try {
                 const stat = await fs.stat(backupPath);
                 res.writeHead(200, {
@@ -532,20 +542,20 @@ const server = http.createServer(async (req, res) => {
         }
 
         // === PROXY TO POCKETBASE ===
-        
+
         // GET/POST/etc /api/instances/:name/pb/*
         const pbProxyMatch = pathname.match(/^\/api\/instances\/([^\/]+)\/pb(\/.*)$/);
         if (pbProxyMatch) {
             const [, name, pbPath] = pbProxyMatch;
             const manifest = await readManifest();
             if (!manifest[name]) return sendJson(404, { error: 'Instance not found' });
-            
+
             let body = null;
             if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
                 body = '';
                 for await (const chunk of req) body += chunk;
             }
-            
+
             try {
                 const result = await proxyToPocketBase(manifest[name].port, req.method, pbPath, body, authToken);
                 res.writeHead(result.status, { 'Content-Type': result.headers['content-type'] || 'application/json' });

@@ -9,7 +9,7 @@ echo "╚═══════════════════════�
 # Configuration from environment
 export MULTIPB_DATA_DIR="${MULTIPB_DATA_DIR:-/var/multipb/data}"
 export MULTIPB_PORT="${MULTIPB_PORT:-25983}"
-MANIFEST_FILE="/var/multipb/instances.json"
+MANIFEST_FILE="/var/multipb/data/instances.json"
 
 echo ""
 echo "Configuration:"
@@ -40,7 +40,8 @@ if [ ! -f /etc/supervisor/supervisord.conf ]; then
 [supervisord]
 nodaemon=true
 user=root
-logfile=/var/log/multipb/supervisord.log
+logfile=/dev/stdout
+logfile_maxbytes=0
 pidfile=/var/run/supervisord.pid
 loglevel=info
 childlogdir=/var/log/multipb
@@ -62,10 +63,10 @@ command=/usr/local/bin/caddy run --config /etc/caddy/Caddyfile --adapter caddyfi
 autostart=true
 autorestart=true
 startretries=5
-stderr_logfile=/var/log/multipb/caddy.err.log
-stdout_logfile=/var/log/multipb/caddy.log
-stderr_logfile_maxbytes=10MB
-stdout_logfile_maxbytes=10MB
+stderr_logfile=/dev/stderr
+stdout_logfile=/dev/stdout
+stderr_logfile_maxbytes=0
+stdout_logfile_maxbytes=0
 user=root
 priority=1
 
@@ -74,12 +75,19 @@ command=/usr/bin/node /usr/local/bin/api-server.js
 autostart=true
 autorestart=true
 startretries=5
-stderr_logfile=/var/log/multipb/api-server.err.log
-stdout_logfile=/var/log/multipb/api-server.log
-stderr_logfile_maxbytes=10MB
-stdout_logfile_maxbytes=10MB
+stderr_logfile=/dev/stderr
+stdout_logfile=/dev/stdout
+stderr_logfile_maxbytes=0
+stdout_logfile_maxbytes=0
 user=root
 priority=2
+
+[program:log-streamer]
+command=/usr/bin/tail -F /var/log/multipb/caddy.log /var/log/multipb/api-server.log /var/log/multipb/*.log
+autostart=true
+autorestart=true
+user=root
+priority=100
 EOF
 fi
 
@@ -90,8 +98,8 @@ if [ -f "$MANIFEST_FILE" ] && command -v jq >/dev/null 2>&1; then
     if [ "$INSTANCE_COUNT" -gt 0 ]; then
         echo "Found $INSTANCE_COUNT instance(s) to restore"
         
-        # Use process substitution to avoid subshell issue
-        while read -r instance_name port; do
+        # Use a portable while loop
+        jq -r 'to_entries[] | "\(.key) \(.value.port)"' "$MANIFEST_FILE" | while read -r instance_name port; do
             INSTANCE_DIR="${MULTIPB_DATA_DIR}/${instance_name}"
             mkdir -p "$INSTANCE_DIR"
             
@@ -116,7 +124,7 @@ environment=HOME="/root"
 EOF
                 echo "  - $instance_name (port $port)"
             fi
-        done < <(jq -r 'to_entries[] | "\(.key) \(.value.port)"' "$MANIFEST_FILE")
+        done
     else
         echo "No instances to restore"
     fi

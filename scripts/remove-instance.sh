@@ -5,7 +5,7 @@ set -e
 # Usage: remove-instance.sh <name> [--delete-data]
 
 MULTIPB_DATA_DIR="${MULTIPB_DATA_DIR:-/var/multipb/data}"
-MANIFEST_FILE="/var/multipb/instances.json"
+MANIFEST_FILE="/var/multipb/data/instances.json"
 DELETE_DATA=false
 
 # Parse arguments

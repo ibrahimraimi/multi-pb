@@ -15,21 +15,23 @@ RUN apk add --no-cache \
     nodejs \
     npm
 
-# Install Caddy from official static binary (more reliable than Alpine package)
-RUN curl -fsSL "https://caddyserver.com/api/download?os=linux&arch=amd64" -o /usr/local/bin/caddy && \
-    chmod +x /usr/local/bin/caddy
-
-# Detect architecture and download appropriate PocketBase binary
+# Detect architecture and download appropriate binaries
 ARG PB_VERSION=0.23.4
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then \
         PB_ARCH="amd64"; \
+        CADDY_ARCH="amd64"; \
     elif [ "$ARCH" = "aarch64" ]; then \
         PB_ARCH="arm64"; \
+        CADDY_ARCH="arm64"; \
     else \
         echo "Unsupported architecture: $ARCH" && exit 1; \
     fi && \
-    echo "Downloading PocketBase for architecture: $PB_ARCH" && \
+    echo "Downloading binaries for architecture: $PB_ARCH" && \
+    # Download Caddy
+    curl -fsSL "https://caddyserver.com/api/download?os=linux&arch=${CADDY_ARCH}" -o /usr/local/bin/caddy && \
+    chmod +x /usr/local/bin/caddy && \
+    # Download PocketBase
     curl -fsSL "https://github.com/pocketbase/pocketbase/releases/download/v${PB_VERSION}/pocketbase_${PB_VERSION}_linux_${PB_ARCH}.zip" \
     -o /tmp/pocketbase.zip && \
     unzip /tmp/pocketbase.zip -d /tmp && \

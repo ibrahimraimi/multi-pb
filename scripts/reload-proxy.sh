@@ -4,7 +4,7 @@ set -e
 # reload-proxy.sh - Regenerate Caddyfile from manifest and reload Caddy
 # Usage: reload-proxy.sh
 
-MANIFEST_FILE="/var/multipb/instances.json"
+MANIFEST_FILE="/var/multipb/data/instances.json"
 CADDYFILE="/etc/caddy/Caddyfile"
 MULTIPB_PORT="${MULTIPB_PORT:-25983}"
 
@@ -15,6 +15,10 @@ cat > "$CADDYFILE" << 'EOF'
 {
     auto_https off
     admin localhost:2019
+    log {
+        output stdout
+        format json
+    }
 }
 
 :${MULTIPB_PORT} {
@@ -33,23 +37,16 @@ cat > "$CADDYFILE" << 'EOF'
         reverse_proxy 127.0.0.1:3001
     }
 
-    # Dashboard - handle root path
-    handle /dashboard {
-        redir /dashboard/ 301
-    }
-
     # Dashboard - serve static files with SPA fallback
     handle /dashboard* {
-        uri strip_prefix /dashboard
-        try_files {path} /index.html
-        file_server {
-            root /var/www/dashboard
-        }
+        root * /var/www
+        try_files {path} {path}/ /dashboard/index.html
+        file_server
     }
 
     # Redirect root to dashboard
     handle / {
-        redir /dashboard 301
+        redir /dashboard/ 301
     }
 
 EOF

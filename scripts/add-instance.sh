@@ -5,7 +5,7 @@ set -e
 # Usage: add-instance.sh <name> [--email <admin_email>] [--password <admin_password>]
 
 MULTIPB_DATA_DIR="${MULTIPB_DATA_DIR:-/var/multipb/data}"
-MANIFEST_FILE="/var/multipb/instances.json"
+MANIFEST_FILE="/var/multipb/data/instances.json"
 MIN_PORT=30000
 MAX_PORT=39999
 
@@ -121,11 +121,36 @@ else
     fi
 fi
 
-# Create instance data directory
+# 1. Create instance data directory
 INSTANCE_DIR="$MULTIPB_DATA_DIR/$INSTANCE_NAME"
 mkdir -p "$INSTANCE_DIR"
 
-# Add to manifest using jq if available, otherwise use basic sed
+# 2. Check if database exists - if not, we need to initialize it
+DB_FILE="$INSTANCE_DIR/data.db"
+if [ ! -f "$DB_FILE" ]; then
+    echo "Initializing database and running migrations..."
+    if ! /usr/local/bin/pocketbase migrate up --dir="$INSTANCE_DIR"; then
+        echo "Warning: Initial migration had issues, but continuing..."
+    fi
+fi
+
+# 3. Create admin user (while service is NOT yet registered/running)
+if [ -z "$ADMIN_EMAIL" ]; then
+    ADMIN_EMAIL="admin@${INSTANCE_NAME}.local"
+fi
+if [ -z "$ADMIN_PASSWORD" ]; then
+    ADMIN_PASSWORD="changeme123"
+fi
+
+echo "Creating admin user..."
+if /usr/local/bin/pocketbase superuser create "$ADMIN_EMAIL" "$ADMIN_PASSWORD" --dir="$INSTANCE_DIR"; then
+    ADMIN_CREATED=true
+else
+    ADMIN_CREATED=false
+    echo "Note: Admin user creation skipped (may already exist)"
+fi
+
+# 4. Add to manifest using jq if available
 if command -v jq >/dev/null 2>&1; then
     TMP_FILE=$(mktemp)
     jq --arg name "$INSTANCE_NAME" --argjson port "$NEXT_PORT" \
@@ -137,10 +162,9 @@ else
     sed -i "s/{}$/{\n  \"$INSTANCE_NAME\": {\"port\": $NEXT_PORT, \"status\": \"running\", \"created\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}\n}/" "$MANIFEST_FILE"
 fi
 
-echo "Instance '$INSTANCE_NAME' added with port $NEXT_PORT"
-echo "Data directory: $INSTANCE_DIR"
+echo "Instance '$INSTANCE_NAME' added to manifest with port $NEXT_PORT"
 
-# Create supervisord program config
+# 5. Create supervisord program config
 SUPERVISOR_CONF="/etc/supervisor/conf.d/${INSTANCE_NAME}.conf"
 cat > "$SUPERVISOR_CONF" << EOF
 [program:pb-${INSTANCE_NAME}]
@@ -159,104 +183,24 @@ user=root
 environment=HOME="/root"
 EOF
 
-echo "Supervisord config created: $SUPERVISOR_CONF"
-
-# Reload supervisord
+# 6. Reload supervisord to start the service
 SUPERVISORCTL="supervisorctl -c /etc/supervisor/supervisord.conf -s unix:///var/run/supervisor.sock"
 if command -v supervisorctl >/dev/null 2>&1 && [ -S /var/run/supervisor.sock ]; then
-    # Check if supervisord is actually running (with retry for startup timing)
-    SUPERVISOR_READY=false
-    MAX_RETRIES=10
-    
-    echo "Checking supervisord status..."
-    for i in $(seq 1 $MAX_RETRIES); do
-        if $SUPERVISORCTL status >/dev/null 2>&1; then
-            SUPERVISOR_READY=true
-            break
-        fi
-        if [ $i -eq 1 ]; then
-            echo "Waiting for supervisord to be ready..."
-        fi
-        if [ $i -lt $MAX_RETRIES ]; then
-            sleep 1
-        fi
-    done
-    
-    if [ "$SUPERVISOR_READY" = true ]; then
-        echo "Reloading supervisord configuration..."
-        $SUPERVISORCTL reread >/dev/null 2>&1
-        $SUPERVISORCTL update >/dev/null 2>&1
-        
-        # Try to start the instance
-        if $SUPERVISORCTL start "pb-${INSTANCE_NAME}" >/dev/null 2>&1; then
-            echo "Instance started via supervisord"
-        else
-            echo "Warning: Could not start instance (will start on next container restart)"
-        fi
-    else
-        echo "Note: supervisord not ready after ${MAX_RETRIES}s (instance will start automatically)"
-        echo "      Container may still be initializing. Check with: docker logs multipb"
-        echo "      Or wait a moment and restart the instance: docker exec multipb start-instance.sh ${INSTANCE_NAME}"
-    fi
-else
-    echo "Warning: supervisorctl not available (instance will start on next container restart)"
+    echo "Registering with supervisord..."
+    $SUPERVISORCTL reread >/dev/null 2>&1
+    $SUPERVISORCTL update >/dev/null 2>&1
+    echo "Instance service started"
 fi
 
-# Regenerate Caddy config
+# 7. Regenerate Caddy config
 /usr/local/bin/reload-proxy.sh
 
-# Get the actual port (from environment or default)
+# Get the actual external port
 ACTUAL_PORT="${MULTIPB_PORT:-25983}"
-
-# Set default admin credentials if not provided
-if [ -z "$ADMIN_EMAIL" ]; then
-    ADMIN_EMAIL="admin@${INSTANCE_NAME}.local"
-fi
-if [ -z "$ADMIN_PASSWORD" ]; then
-    ADMIN_PASSWORD="changeme123"
-fi
-
-# Check if database exists - if not, we need to run migration first
-DB_FILE="$INSTANCE_DIR/data.db"
-NEEDS_MIGRATION=false
-if [ ! -f "$DB_FILE" ]; then
-    NEEDS_MIGRATION=true
-    echo "Initializing database..."
-    if ! /usr/local/bin/pocketbase migrate up --dir="$INSTANCE_DIR" >/dev/null 2>&1; then
-        echo "Warning: Migration failed, PocketBase will auto-migrate on start"
-    fi
-fi
-
-# Wait for PocketBase to be ready if it's running
-if [ "$SUPERVISOR_READY" = true ]; then
-    echo "Waiting for PocketBase to initialize..."
-    MAX_WAIT=15
-    WAIT_COUNT=0
-    while [ ! -f "$DB_FILE" ] || [ ! -s "$DB_FILE" ]; do
-        if [ $WAIT_COUNT -ge $MAX_WAIT ]; then
-            echo "Warning: Database not ready after ${MAX_WAIT}s, continuing anyway..."
-            break
-        fi
-        sleep 1
-        WAIT_COUNT=$((WAIT_COUNT + 1))
-    done
-    # Give it an extra moment to fully initialize
-    sleep 2
-fi
-
-# Create admin user
-echo "Creating admin user..."
-if /usr/local/bin/pocketbase superuser create "$ADMIN_EMAIL" "$ADMIN_PASSWORD" --dir="$INSTANCE_DIR" >/dev/null 2>&1; then
-    ADMIN_CREATED=true
-else
-    ADMIN_CREATED=false
-    echo "Note: Admin user creation failed (may already exist or instance not ready)"
-fi
 
 echo ""
 echo "✓ Instance '$INSTANCE_NAME' is ready!"
-echo "  PocketBase instance: http://localhost:${ACTUAL_PORT}/${INSTANCE_NAME}/_/"
+echo "  URL: http://localhost:${ACTUAL_PORT}/${INSTANCE_NAME}/_/"
 if [ "$ADMIN_CREATED" = true ]; then
-    echo "  Admin email: $ADMIN_EMAIL"
-    echo "  Admin password: $ADMIN_PASSWORD"
+    echo "  Admin: $ADMIN_EMAIL / $ADMIN_PASSWORD"
 fi
