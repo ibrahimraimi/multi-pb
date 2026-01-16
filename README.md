@@ -401,18 +401,6 @@ docker exec multipb list-instances.sh
 docker exec multipb remove-instance.sh test1
 ```
 
-## Comparison with Original
-
-| Feature | Original | Simplified |
-|---------|----------|------------|
-| Architecture | Go server + SvelteKit frontend | Shell scripts only |
-| Routing | Subdomain-based | Path-based (default) |
-| Management | Web dashboard | CLI commands |
-| Ports | Multiple (80, 443, 8080) | Single port (25983) |
-| Dependencies | Go, Node, pnpm, Caddy | Caddy, supervisord, shell |
-| DNS Required | Yes (wildcard) | No |
-| Complexity | High | Minimal |
-| Image Size | ~500MB+ | ~100MB |
 
 ## Contributing
 
