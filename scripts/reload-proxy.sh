@@ -11,7 +11,24 @@ MULTIPB_PORT="${MULTIPB_PORT:-25983}"
 echo "Regenerating Caddy configuration..."
 
 # Start building Caddyfile
-cat > "$CADDYFILE" << 'EOF'
+echo "Building Caddyfile with DOMAIN=${MULTIPB_DOMAIN} PORT=${MULTIPB_PORT}"
+
+if [ -n "$MULTIPB_DOMAIN" ]; then
+    # HTTPS Mode (Domain provided)
+    cat > "$CADDYFILE" << EOF
+{
+    admin localhost:2019
+    log {
+        output stdout
+        format json
+    }
+}
+
+${MULTIPB_DOMAIN} {
+EOF
+else
+    # HTTP Mode (Port only)
+    cat > "$CADDYFILE" << EOF
 {
     auto_https off
     admin localhost:2019
@@ -22,6 +39,10 @@ cat > "$CADDYFILE" << 'EOF'
 }
 
 :${MULTIPB_PORT} {
+EOF
+fi
+
+cat >> "$CADDYFILE" << 'EOF'
     # Health check endpoint
     handle /_health {
         respond "OK" 200
@@ -73,22 +94,24 @@ cat >> "$CADDYFILE" << 'EOF'
 }
 EOF
 
-# Replace ${MULTIPB_PORT} and ${INSTANCE_LIST} in the generated file
-sed -i "s/\${MULTIPB_PORT}/$MULTIPB_PORT/g" "$CADDYFILE"
+# Replace variables
 sed -i "s|\${INSTANCE_LIST}|$INSTANCE_LIST|g" "$CADDYFILE"
 
 echo "Caddyfile generated at: $CADDYFILE"
 
 # Reload Caddy if running
-if pgrep -x caddy > /dev/null; then
+# We use pidof as it's more reliable than pgrep in some alpine/container environments
+if pidof caddy > /dev/null || pgrep caddy > /dev/null; then
     if command -v caddy >/dev/null 2>&1; then
-        # Attempt reload and capture any errors for logging
+        echo "Reloading Caddy..."
         if ! caddy reload --config "$CADDYFILE" --adapter caddyfile 2>&1; then
-            echo "Warning: Caddy reload encountered an issue. Check logs at /var/log/multipb/caddy.err.log"
+            echo "Warning: Caddy reload encountered an issue. Check logs."
+            # Fallback: try to restart if reload fails and we are inside supervisor? 
+            # No, keep it simple.
         else
             echo "✓ Caddy configuration reloaded"
         fi
     fi
 else
-    echo "Note: Caddy not running, will use config on next start"
+    echo "Note: Caddy not running (pidof failed), will use config on next start"
 fi
