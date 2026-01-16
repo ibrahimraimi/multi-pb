@@ -47,6 +47,7 @@ while [[ "$#" -gt 0 ]]; do
         --port) MULTIPB_PORT="$2"; shift ;;
         --data-dir) DATA_DIR="$2"; shift ;;
         --name) CONTAINER_NAME="$2"; shift ;;
+        --domain) DOMAIN_NAME="$2"; shift ;;
         --non-interactive) NON_INTERACTIVE=true ;;
         *) echo "Unknown parameter: $1"; exit 1 ;;
     esac
@@ -77,6 +78,9 @@ if [ "$NON_INTERACTIVE" != "true" ]; then
 
     read -p "Container name [$CONTAINER_NAME]: " INPUT_NAME
     CONTAINER_NAME="${INPUT_NAME:-$CONTAINER_NAME}"
+    
+    read -p "Domain name (optional, enables HTTPS) []: " INPUT_DOMAIN
+    DOMAIN_NAME="${INPUT_DOMAIN:-$DOMAIN_NAME}"
 fi
 
 # Create installation directory
@@ -115,11 +119,32 @@ cat >> "$INSTALL_DIR/docker-compose.yml" << EOF
     restart: unless-stopped
     ports:
       - "${MULTIPB_PORT}:25983"
+EOF
+
+# Add optional ports and env vars
+if [ -n "$DOMAIN_NAME" ]; then
+cat >> "$INSTALL_DIR/docker-compose.yml" << EOF
+      - "80:80"
+      - "443:443"
+EOF
+fi
+
+cat >> "$INSTALL_DIR/docker-compose.yml" << EOF
     volumes:
       - ${DATA_DIR}:/var/multipb/data
     environment:
       - MULTIPB_PORT=25983
       - MULTIPB_DATA_DIR=/var/multipb/data
+EOF
+
+# Add domain env var only if set
+if [ -n "$DOMAIN_NAME" ]; then
+cat >> "$INSTALL_DIR/docker-compose.yml" << EOF
+      - MULTIPB_DOMAIN=${DOMAIN_NAME}
+EOF
+fi
+
+cat >> "$INSTALL_DIR/docker-compose.yml" << EOF
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:25983/_health"]
       interval: 30s
