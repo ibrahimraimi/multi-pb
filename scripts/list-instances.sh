@@ -3,7 +3,7 @@
 # list-instances.sh - List all PocketBase instances
 # Usage: list-instances.sh
 
-MANIFEST_FILE="/var/multipb/instances.json"
+MANIFEST_FILE="/var/multipb/data/instances.json"
 
 if [ ! -f "$MANIFEST_FILE" ]; then
     echo "No instances configured yet"

@@ -4,7 +4,7 @@ set -e
 # stop-instance.sh - Stop a running PocketBase instance
 # Usage: stop-instance.sh <name>
 
-MANIFEST_FILE="/var/multipb/instances.json"
+MANIFEST_FILE="/var/multipb/data/instances.json"
 
 if [ $# -lt 1 ]; then
     echo "Usage: stop-instance.sh <name>"

@@ -4,7 +4,7 @@ set -e
 # start-instance.sh - Start a stopped PocketBase instance
 # Usage: start-instance.sh <name>
 
-MANIFEST_FILE="/var/multipb/instances.json"
+MANIFEST_FILE="/var/multipb/data/instances.json"
 
 if [ $# -lt 1 ]; then
     echo "Usage: start-instance.sh <name>"
