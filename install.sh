@@ -41,24 +41,43 @@ fi
 echo -e "${GREEN}✓ All requirements met${NC}"
 echo ""
 
+# Parse command line arguments
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --port) MULTIPB_PORT="$2"; shift ;;
+        --data-dir) DATA_DIR="$2"; shift ;;
+        --name) CONTAINER_NAME="$2"; shift ;;
+        --non-interactive) NON_INTERACTIVE=true ;;
+        *) echo "Unknown parameter: $1"; exit 1 ;;
+    esac
+    shift
+done
+
 # Default values
 DEFAULT_PORT="25983"
 DEFAULT_DATA_DIR="./multipb-data"
 DEFAULT_CONTAINER_NAME="multipb"
 
-# Prompt for configuration
-echo -e "${BLUE}Configuration${NC}"
-echo "Press Enter to accept defaults shown in [brackets]"
-echo ""
-
-read -p "External port [$DEFAULT_PORT]: " MULTIPB_PORT
+# Use provided values or defaults
 MULTIPB_PORT="${MULTIPB_PORT:-$DEFAULT_PORT}"
-
-read -p "Data directory [$DEFAULT_DATA_DIR]: " DATA_DIR
 DATA_DIR="${DATA_DIR:-$DEFAULT_DATA_DIR}"
-
-read -p "Container name [$DEFAULT_CONTAINER_NAME]: " CONTAINER_NAME
 CONTAINER_NAME="${CONTAINER_NAME:-$DEFAULT_CONTAINER_NAME}"
+
+# Prompt for configuration if not non-interactive
+if [ "$NON_INTERACTIVE" != "true" ]; then
+    echo -e "${BLUE}Configuration${NC}"
+    echo "Press Enter to accept defaults shown in [brackets]"
+    echo ""
+
+    read -p "External port [$MULTIPB_PORT]: " INPUT_PORT
+    MULTIPB_PORT="${INPUT_PORT:-$MULTIPB_PORT}"
+
+    read -p "Data directory [$DATA_DIR]: " INPUT_DATA_DIR
+    DATA_DIR="${INPUT_DATA_DIR:-$DATA_DIR}"
+
+    read -p "Container name [$CONTAINER_NAME]: " INPUT_NAME
+    CONTAINER_NAME="${INPUT_NAME:-$CONTAINER_NAME}"
+fi
 
 # Create installation directory
 INSTALL_DIR="$(pwd)"
@@ -122,7 +141,12 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 
 # Ask to start
-read -p "Start Multi-PB now? (Y/n): " START_NOW
+if [ "$NON_INTERACTIVE" = "true" ]; then
+    START_NOW="y"
+else
+    read -p "Start Multi-PB now? (Y/n): " START_NOW
+fi
+
 if [[ ! "$START_NOW" =~ ^[Nn]$ ]]; then
     echo ""
     echo -e "${YELLOW}Starting Multi-PB...${NC}"

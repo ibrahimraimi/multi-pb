@@ -1,5 +1,7 @@
-# Multi-PB
+# Multi-PB: Multi-Instance PocketBase Manager
 
+> **Quick Start**: Run `./install.sh` to get started in minutes!
+> See [DEPLOYMENT.md](DEPLOYMENT.md) for full hosting guide.
 A simple, single-container solution for running multiple isolated PocketBase instances with path-based routing. No DNS setup required, minimal complexity, maximum reliability.
 
 ## Features
