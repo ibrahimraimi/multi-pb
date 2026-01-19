@@ -13,7 +13,8 @@ RUN apk add --no-cache \
     jq \
     bash \
     nodejs \
-    npm
+    npm \
+    util-linux
 
 # Detect architecture and download appropriate binaries
 ARG PB_VERSION=0.23.4
@@ -54,14 +55,20 @@ RUN chmod +x /usr/local/bin/*.sh
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Build dashboard
+# Build dashboard (skip if SKIP_DASHBOARD build arg is set)
+ARG SKIP_DASHBOARD=false
+RUN mkdir -p /var/www/dashboard
 COPY dashboard /tmp/dashboard
 WORKDIR /tmp/dashboard
-RUN npm install && \
-    npx svelte-kit sync && \
-    npm run build && \
-    mkdir -p /var/www/dashboard && \
-    cp -r build/* /var/www/dashboard/
+RUN if [ "$SKIP_DASHBOARD" != "true" ]; then \
+        npm install && \
+        npx svelte-kit sync && \
+        npm run build && \
+        cp -r build/* /var/www/dashboard/; \
+    else \
+        echo "Skipping dashboard build (CLI-only mode)" && \
+        rm -rf /tmp/dashboard; \
+    fi
 
 # Copy API server
 COPY api-server.js /usr/local/bin/api-server.js

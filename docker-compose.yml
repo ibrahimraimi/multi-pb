@@ -1,22 +1,17 @@
-# Multi-PB: Simple single-container deployment
-# For production, customize MULTIPB_PORT and use external reverse proxy
-
 services:
   multipb:
-    build: .
+    build:
+      context: /Users/n3rd/code/libs/multi-pb
+      args:
+        SKIP_DASHBOARD: "true"
     container_name: multipb
     restart: unless-stopped
     ports:
-      # Single port for all instances (path-based routing)
-      - "${MULTIPB_PORT:-25983}:25983"
+      - "25983:25983"
     volumes:
-      # Single volume for all instance data
-      - multipb-data:/var/multipb/data
+      - ./multipb-data:/var/multipb/data
     environment:
-      # External port (obscure default for security)
       - MULTIPB_PORT=25983
-      
-      # Data directory inside container
       - MULTIPB_DATA_DIR=/var/multipb/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:25983/_health"]
@@ -24,6 +19,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
-
-volumes:
-  multipb-data:

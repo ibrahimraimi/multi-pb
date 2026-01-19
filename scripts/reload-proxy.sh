@@ -58,6 +58,11 @@ cat >> "$CADDYFILE" << 'EOF'
         reverse_proxy 127.0.0.1:3001
     }
 
+EOF
+
+# Add dashboard routes only if dashboard exists
+if [ -d "/var/www/dashboard" ] && [ -f "/var/www/dashboard/index.html" ]; then
+    cat >> "$CADDYFILE" << 'EOF'
     # Dashboard - serve static files with SPA fallback
     handle /dashboard* {
         root * /var/www
@@ -69,6 +74,17 @@ cat >> "$CADDYFILE" << 'EOF'
     handle / {
         redir /dashboard/ 301
     }
+EOF
+else
+    cat >> "$CADDYFILE" << 'EOF'
+    # Root endpoint (dashboard not installed)
+    handle / {
+        respond "Multi-PB - PocketBase Multi-Instance Manager (CLI-only mode)" 200
+    }
+EOF
+fi
+
+cat >> "$CADDYFILE" << 'EOF'
 
 EOF
 
