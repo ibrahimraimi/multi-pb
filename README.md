@@ -1,6 +1,8 @@
 # Multi-PB: Multi-Instance PocketBase Manager
 
-> **Quick Start**: Run `./install.sh` to get started in minutes!  
+## **WARNING: THIS PROJECT IS STILL IN DEVELOPMENT, AND IS NOT PRODUCTION READY**
+
+> **Quick Start**: Run `./install.sh` to get started in minutes!
 > See [DEPLOYMENT.md](DEPLOYMENT.md) for full hosting guide.
 
 A single-container solution for running multiple isolated PocketBase instances with path-based routing. No DNS setup required.
@@ -285,6 +287,11 @@ docker exec multipb add-instance.sh test1
 docker exec multipb list-instances.sh
 docker exec multipb remove-instance.sh test1
 ```
+
+
+## Contributing
+
+Contributions welcome! This project prioritizes simplicity and reliability over features.
 
 ## License
 
