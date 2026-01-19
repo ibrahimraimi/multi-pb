@@ -24,9 +24,23 @@ check_command() {
     fi
 }
 
+# Parse command line arguments
+CLI_ONLY=false
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --port) MULTIPB_PORT="$2"; shift ;;
+        --data-dir) DATA_DIR="$2"; shift ;;
+        --name) CONTAINER_NAME="$2"; shift ;;
+        --domain) DOMAIN_NAME="$2"; shift ;;
+        --non-interactive) NON_INTERACTIVE=true ;;
+        --cli-only) CLI_ONLY=true ;;
+        *) echo "Unknown parameter: $1"; exit 1 ;;
+    esac
+    shift
+done
+
 echo -e "${YELLOW}Checking requirements...${NC}"
 check_command docker
-check_command curl
 
 # Check if docker compose is available (v2 or v1)
 if docker compose version &> /dev/null; then
@@ -38,21 +52,13 @@ else
     exit 1
 fi
 
+# Only check curl if not CLI-only (needed for health checks)
+if [ "$CLI_ONLY" != "true" ]; then
+    check_command curl
+fi
+
 echo -e "${GREEN}✓ All requirements met${NC}"
 echo ""
-
-# Parse command line arguments
-while [[ "$#" -gt 0 ]]; do
-    case $1 in
-        --port) MULTIPB_PORT="$2"; shift ;;
-        --data-dir) DATA_DIR="$2"; shift ;;
-        --name) CONTAINER_NAME="$2"; shift ;;
-        --domain) DOMAIN_NAME="$2"; shift ;;
-        --non-interactive) NON_INTERACTIVE=true ;;
-        *) echo "Unknown parameter: $1"; exit 1 ;;
-    esac
-    shift
-done
 
 # Default values
 DEFAULT_PORT="25983"
@@ -63,6 +69,9 @@ DEFAULT_CONTAINER_NAME="multipb"
 MULTIPB_PORT="${MULTIPB_PORT:-$DEFAULT_PORT}"
 DATA_DIR="${DATA_DIR:-$DEFAULT_DATA_DIR}"
 CONTAINER_NAME="${CONTAINER_NAME:-$DEFAULT_CONTAINER_NAME}"
+
+# CLI-only mode: skip dashboard but still install container
+# This will be used when building the Docker image
 
 # Prompt for configuration if not non-interactive
 if [ "$NON_INTERACTIVE" != "true" ]; then
@@ -101,11 +110,22 @@ echo -e "${YELLOW}Creating configuration...${NC}"
 
 # Generate docker-compose.yml
 if [ "$BUILD_FROM_SOURCE" = "true" ]; then
+    if [ "$CLI_ONLY" = "true" ]; then
+cat > "$INSTALL_DIR/docker-compose.yml" << EOF
+services:
+  ${CONTAINER_NAME}:
+    build:
+      context: ${SCRIPT_DIR}
+      args:
+        SKIP_DASHBOARD: "true"
+EOF
+    else
 cat > "$INSTALL_DIR/docker-compose.yml" << EOF
 services:
   ${CONTAINER_NAME}:
     build: ${SCRIPT_DIR}
 EOF
+    fi
 else
 cat > "$INSTALL_DIR/docker-compose.yml" << EOF
 services:
@@ -162,6 +182,9 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo -e "  Container:  ${GREEN}${CONTAINER_NAME}${NC}"
 echo -e "  Port:       ${GREEN}http://localhost:${MULTIPB_PORT}${NC}"
 echo -e "  Data Dir:   ${GREEN}${DATA_DIR}${NC}"
+if [ "$CLI_ONLY" = "true" ]; then
+    echo -e "  Mode:       ${YELLOW}CLI-only (no dashboard)${NC}"
+fi
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
@@ -200,12 +223,15 @@ if [[ ! "$START_NOW" =~ ^[Nn]$ ]]; then
     echo ""
     echo -e "Health check: ${BLUE}http://localhost:${MULTIPB_PORT}/_health${NC}"
     echo -e "List instances: ${BLUE}http://localhost:${MULTIPB_PORT}/_instances${NC}"
+    if [ "$CLI_ONLY" != "true" ]; then
+        echo -e "Dashboard: ${BLUE}http://localhost:${MULTIPB_PORT}/dashboard${NC}"
+    fi
     echo ""
     echo -e "${YELLOW}Create your first instance:${NC}"
     echo -e "  ${BLUE}docker exec ${CONTAINER_NAME} add-instance.sh myapp${NC}"
     echo ""
     echo -e "${YELLOW}Then access it at:${NC}"
-    echo -e "  ${BLUE}http://localhost:${MULTIPB_PORT}/myapp/${NC}"
+    echo -e "  ${BLUE}http://localhost:${MULTIPB_PORT}/myapp/_/${NC}"
     echo ""
     echo -e "${YELLOW}Manage instances:${NC}"
     echo -e "  ${BLUE}docker exec ${CONTAINER_NAME} list-instances.sh${NC}"
@@ -214,11 +240,13 @@ if [[ ! "$START_NOW" =~ ^[Nn]$ ]]; then
     echo -e "  ${BLUE}docker exec ${CONTAINER_NAME} remove-instance.sh myapp${NC}"
     echo ""
     
-    # Try to open browser
-    if command -v xdg-open &> /dev/null; then
-        xdg-open "http://localhost:${MULTIPB_PORT}/_health" 2>/dev/null &
-    elif command -v open &> /dev/null; then
-        open "http://localhost:${MULTIPB_PORT}/_health" 2>/dev/null &
+    # Try to open browser (skip dashboard in CLI-only mode)
+    if [ "$CLI_ONLY" != "true" ]; then
+        if command -v xdg-open &> /dev/null; then
+            xdg-open "http://localhost:${MULTIPB_PORT}/dashboard" 2>/dev/null &
+        elif command -v open &> /dev/null; then
+            open "http://localhost:${MULTIPB_PORT}/dashboard" 2>/dev/null &
+        fi
     fi
 else
     echo ""
