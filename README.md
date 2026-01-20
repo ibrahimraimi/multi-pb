@@ -103,6 +103,56 @@ Regenerate Caddy configuration from manifest.
 docker exec multipb reload-proxy.sh
 ```
 
+### backup-instance.sh
+
+Create a backup of a PocketBase instance.
+
+```bash
+docker exec multipb backup-instance.sh myapp
+```
+
+Backups are stored in `/var/multipb/backups/<instance-name>/` as timestamped ZIP files.
+
+### list-backups.sh
+
+List backups for an instance or all instances.
+
+```bash
+# List backups for a specific instance
+docker exec multipb list-backups.sh myapp
+
+# List backups for all instances
+docker exec multipb list-backups.sh
+```
+
+### restore-instance.sh
+
+Restore a PocketBase instance from a backup.
+
+```bash
+docker exec multipb restore-instance.sh myapp backup-2024-01-15T10-30-00Z.zip
+```
+
+The instance will be stopped, restored, and restarted automatically. Current data is backed up before restoration.
+
+### view-logs.sh
+
+View logs for a PocketBase instance.
+
+```bash
+# View last 50 lines of stdout log
+docker exec multipb view-logs.sh myapp
+
+# View error log
+docker exec multipb view-logs.sh myapp --stderr
+
+# View last 100 lines
+docker exec multipb view-logs.sh myapp --tail 100
+
+# Follow log output (like tail -f)
+docker exec multipb view-logs.sh myapp --follow
+```
+
 ## Architecture
 
 ```
@@ -287,6 +337,26 @@ docker exec multipb add-instance.sh test1
 docker exec multipb list-instances.sh
 docker exec multipb remove-instance.sh test1
 ```
+
+### Testing
+
+```bash
+# Test installation
+./test-install.sh
+
+# Test all CLI functionality
+./test-cli.sh [container-name]
+
+# Example: Test against a specific container
+./test-cli.sh multipb
+```
+
+The `test-cli.sh` script tests all CLI commands including:
+- Instance management (add, list, start, stop, remove)
+- Backup operations (backup, list, restore)
+- Log viewing
+- Error handling
+- Command options and flags
 
 
 ## Contributing

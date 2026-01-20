@@ -1,0 +1,28 @@
+name: Multi-PB CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq curl rsync
+
+      - name: Run Comprehensive Test Suite
+        run: |
+          chmod +x tests.sh
+          ./tests.sh --name multipb-ci-test --port 25999
