@@ -127,7 +127,7 @@ async function monitorLoop() {
 }
 
 // Start monitor
-monitorLoop();
+// Health monitor start moved to entry point guard at the end of the file.
 
 async function execScript(script, args = []) {
   const cmd = `/usr/local/bin/${script} ${args.join(" ")}`;
@@ -816,6 +816,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 if (require.main === module) {
+  monitorLoop();
   server.listen(PORT, "127.0.0.1", () => {
     console.log(`API server running on http://127.0.0.1:${PORT}`);
   });
