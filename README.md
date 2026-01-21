@@ -1,6 +1,6 @@
 # Multi-PB: Multi-Instance PocketBase Manager
 
-## **WARNING: THIS PROJECT IS STILL IN DEVELOPMENT, AND IS NOT PRODUCTION READY**
+## **WARNING: THIS PROJECT IS STILL IN DEVELOPMENT, NOT PRODUCTION READY,AND STILL RECEIVES CONSTANT BREAKING UPDATES**
 
 > **Quick Start**: Run `./install.sh` to get started in minutes!
 > See [DEPLOYMENT.md](DEPLOYMENT.md) for full hosting guide.
