@@ -1,0 +1,69 @@
+# API Reference
+
+The internal API server runs on port 3001 inside the container but is exposed via Caddy at `/api`.
+
+Base URL: `http://localhost:25983/api`
+
+## Instances
+
+### List Instances
+
+`GET /instances`
+Returns a list of all configured instances.
+
+### Create Instance
+
+`POST /instances`
+
+```json
+{
+  "name": "myapp",
+  "email": "admin@example.com",
+  "password": "secret",
+  "memory": "512MB"
+}
+```
+
+### Get Instance Details
+
+`GET /instances/:name`
+Returns details, status, backup list, and **health history**.
+
+### Control Instance
+
+`POST /instances/:name/start`
+`POST /instances/:name/stop`
+`POST /instances/:name/restart`
+
+## Import
+
+### Import from ZIP
+
+`POST /import?name=new-name`
+Body: Binary content of the ZIP file.
+
+## Backups
+
+### Create Backup
+
+`POST /instances/:name/backups`
+
+### Restore Backup
+
+`POST /instances/:name/backups/:filename/restore`
+
+### Download Backup
+
+`GET /instances/:name/backups/:filename/download`
+
+## Monitoring
+
+### Health History
+
+`GET /instances/:name/history`
+Returns historical health check data.
+
+### Notification Config
+
+`GET /notifications/config`
+Returns current public notification settings (e.g. configured webhook URL).

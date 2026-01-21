@@ -1,0 +1,33 @@
+# Configuration
+
+## Docker / Environment
+
+- `MULTIPB_PORT`: Main entrypoint port (default: 25983)
+- `MULTIPB_DATA_DIR`: Directory for instance data (default: `/var/multipb/data`)
+- `MULTIPB_DOMAIN`: Domain name for Caddy auto-HTTPS
+
+## Global Config (`config.json`)
+
+Located at `/var/multipb/data/config.json`. Controls monitoring and notifications.
+
+```json
+{
+  "notifications": {
+    "webhookUrl": "https://discord.com/api/webhooks/...",
+    "events": {
+      "instance_down": true, // Alert when instance goes offline
+      "instance_recovered": true // Alert when instance comes back
+    }
+  },
+  "monitoring": {
+    "intervalSeconds": 60, // Health check frequency
+    "historyRetentionCount": 100 // How many historical checks to keep
+  }
+}
+```
+
+## Resource Limits
+
+You can limit memory usage per instance using the `memory` parameter during creation (CLI or API). This sets `GOMEMLIMIT` for the PocketBase process.
+
+Examples: `128MB`, `512MB`, `1GiB`.
