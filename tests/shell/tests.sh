@@ -211,12 +211,16 @@ if [ "$SKIP_INSTALL" != "true" ]; then
         exit 1
     fi
     
+    # Determine project root
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../" && pwd)"
+
     # Copy project files
     info "Copying project files..."
     if ! rsync -av --exclude '.git' --exclude 'node_modules' --exclude 'multipb-data' \
-        --exclude 'dashboard/node_modules' --exclude '.DS_Store' \
+        --exclude 'apps/dashboard/node_modules' --exclude '.DS_Store' \
         --exclude 'test-*' \
-        ./ "$TEST_DIR/" >/dev/null 2>&1; then
+        "$PROJECT_ROOT/" "$TEST_DIR/" >/dev/null 2>&1; then
         echo -e "${RED}Error: Failed to copy project files${NC}"
         exit 1
     fi

@@ -20,13 +20,13 @@ RUN apk add --no-cache \
 ARG PB_VERSION=0.23.4
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then \
-        PB_ARCH="amd64"; \
-        CADDY_ARCH="amd64"; \
+    PB_ARCH="amd64"; \
+    CADDY_ARCH="amd64"; \
     elif [ "$ARCH" = "aarch64" ]; then \
-        PB_ARCH="arm64"; \
-        CADDY_ARCH="arm64"; \
+    PB_ARCH="arm64"; \
+    CADDY_ARCH="arm64"; \
     else \
-        echo "Unsupported architecture: $ARCH" && exit 1; \
+    echo "Unsupported architecture: $ARCH" && exit 1; \
     fi && \
     echo "Downloading binaries for architecture: $PB_ARCH" && \
     # Download Caddy
@@ -48,30 +48,30 @@ RUN mkdir -p /var/multipb/data \
     /etc/supervisor/conf.d
 
 # Copy management scripts
-COPY scripts/*.sh /usr/local/bin/
+COPY core/cli/*.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/*.sh
 
 # Copy entrypoint
-COPY entrypoint.sh /entrypoint.sh
+COPY core/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # Build dashboard (skip if SKIP_DASHBOARD build arg is set)
 ARG SKIP_DASHBOARD=false
 RUN mkdir -p /var/www/dashboard
-COPY dashboard /tmp/dashboard
+COPY apps/dashboard /tmp/dashboard
 WORKDIR /tmp/dashboard
 RUN if [ "$SKIP_DASHBOARD" != "true" ]; then \
-        npm install && \
-        npx svelte-kit sync && \
-        npm run build && \
-        cp -r build/* /var/www/dashboard/; \
+    npm install && \
+    npx svelte-kit sync && \
+    npm run build && \
+    cp -r build/* /var/www/dashboard/; \
     else \
-        echo "Skipping dashboard build (CLI-only mode)" && \
-        rm -rf /tmp/dashboard; \
+    echo "Skipping dashboard build (CLI-only mode)" && \
+    rm -rf /tmp/dashboard; \
     fi
 
 # Copy API server
-COPY api-server.js /usr/local/bin/api-server.js
+COPY core/api/server.js /usr/local/bin/api-server.js
 RUN chmod +x /usr/local/bin/api-server.js
 
 WORKDIR /

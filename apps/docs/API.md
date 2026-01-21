@@ -67,3 +67,20 @@ Returns historical health check data.
 
 `GET /notifications/config`
 Returns current public notification settings (e.g. configured webhook URL).
+
+## System & Ports
+
+### Check Port Availability
+
+`GET /ports/check/:port`
+Checks if a port is available and within the allowed range (30000-39999).
+
+### List Used Ports
+
+`GET /ports/used`
+Returns a list of all ports currently assigned to instances.
+
+### System Stats
+
+`GET /stats`
+Returns container CPU load, memory usage, and disk usage.

@@ -2,14 +2,14 @@ name: Multi-PB CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -22,7 +22,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq curl rsync
 
-      - name: Run Comprehensive Test Suite
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run API Integration Tests
         run: |
-          chmod +x tests.sh
-          ./tests.sh --name multipb-ci-test --port 25999
+          cd tests/api
+          npm install
+          npm test
+
+      - name: Run Comprehensive Shell Test Suite
+        run: |
+          chmod +x tests/shell/tests.sh
+          ./tests/shell/tests.sh --name multipb-ci-test --port 25999
