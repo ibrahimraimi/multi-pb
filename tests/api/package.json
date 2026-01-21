@@ -1,0 +1,11 @@
+{
+  "name": "multipb-api-tests",
+  "version": "1.0.0",
+  "description": "API Integration Tests",
+  "scripts": {
+    "test": "node --test server.test.js"
+  },
+  "dependencies": {
+    "supertest": "^6.3.3"
+  }
+}

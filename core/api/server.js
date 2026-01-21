@@ -815,6 +815,10 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, "127.0.0.1", () => {
-  console.log(`API server running on http://127.0.0.1:${PORT}`);
-});
+if (require.main === module) {
+  server.listen(PORT, "127.0.0.1", () => {
+    console.log(`API server running on http://127.0.0.1:${PORT}`);
+  });
+}
+
+module.exports = server;

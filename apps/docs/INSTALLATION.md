@@ -54,11 +54,30 @@ server {
 
 Multi-PB uses path-based routing (`/instance-name/`). To map subdomains (`instance.domain.com`), you need a wildcard DNS record and a reverse proxy configuration:
 
-```nginx
+```bash
 server {
     server_name ~^(?<instance>.+)\.pb\.yourdomain\.com$;
     location / {
         proxy_pass http://localhost:25983/$instance/;
     }
 }
+```
+
+## Verify Installation
+
+You can verify that everything is working correctly by running the integration tests:
+
+### API Tests
+
+```bash
+# Inside the container
+cd /tmp && git clone https://github.com/n3-rd/multi-pb.git && cd multi-pb/tests/api
+npm install && npm test
+```
+
+### CLI Tests
+
+```bash
+# Inside the container
+tests/shell/test-cli.sh
 ```

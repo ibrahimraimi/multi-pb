@@ -13,11 +13,15 @@ CONTAINER_NAME="multipb-test"
 echo "Creating test directory: $TEST_DIR"
 mkdir -p "$TEST_DIR"
 
+# Determine project root (2 levels up from this script)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../" && pwd)"
+
 # Copy project files to test dir (simulating a clone)
 # Excluding git, node_modules, and existing data
 rsync -av --exclude '.git' --exclude 'node_modules' --exclude 'multipb-data' \
-    --exclude 'dashboard/node_modules' --exclude '.DS_Store' \
-    ./ "$TEST_DIR/"
+    --exclude 'apps/dashboard/node_modules' --exclude '.DS_Store' \
+    "$PROJECT_ROOT/" "$TEST_DIR/"
 
 cd "$TEST_DIR"
 

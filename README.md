@@ -4,8 +4,6 @@
 
 A single-container solution for running multiple isolated PocketBase instances with path-based routing.
 
-![Dashboard](https://via.placeholder.com/800x400?text=Multi-PB+Dashboard)
-
 ## Features
 
 - **Single Container**: Run hundreds of instances on a single port.
@@ -14,6 +12,25 @@ A single-container solution for running multiple isolated PocketBase instances w
 - **Monitoring**: Background health checks with Discord/Slack notifications.
 - **Management**: Web Dashboard and CLI tools.
 - **Backups**: Built-in backup/restore and import tools.
+
+## Project Structure
+
+This project follows a monorepo-style structure:
+
+```
+├── apps/
+│   ├── dashboard/   # SvelteKit Dashboard
+│   ├── docs/        # Documentation
+│   └── web/         # Landing Page (Future)
+├── core/
+│   ├── api/         # Node.js API Server
+│   ├── cli/         # Shell Scripts (add-instance, etc.)
+│   └── entrypoint.sh
+├── Dockerfile       # Main container build
+└── install.sh       # Installer script
+```
+
+See the [Development Guide](apps/docs/DEVELOPMENT.md) for more details on project structure and testing.
 
 ## Quick Start
 
