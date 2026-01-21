@@ -1,0 +1,24 @@
+{
+  "notifications": {
+    "webhookUrl": "",
+    "events": {
+      "instance_down": true,
+      "instance_recovered": true,
+      "low_disk_space": true
+    }
+  },
+  "monitoring": {
+    "intervalSeconds": 60,
+    "historyRetentionCount": 100
+  },
+  "backup": {
+    "schedule": "0 0 * * *",
+    "s3": {
+      "enabled": false,
+      "endpoint": "",
+      "bucket": "",
+      "accessKey": "",
+      "secretKey": ""
+    }
+  }
+}

@@ -14,6 +14,7 @@ INSTANCE_NAME=""
 ADMIN_EMAIL=""
 ADMIN_PASSWORD=""
 CUSTOM_PORT=""
+MEMORY_LIMIT=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -29,6 +30,10 @@ while [ $# -gt 0 ]; do
             CUSTOM_PORT="$2"
             shift 2
             ;;
+        --memory)
+            MEMORY_LIMIT="$2"
+            shift 2
+            ;;
         *)
             if [ -z "$INSTANCE_NAME" ]; then
                 INSTANCE_NAME="$1"
@@ -39,7 +44,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$INSTANCE_NAME" ]; then
-    echo "Usage: add-instance.sh <name> [--email <admin_email>] [--password <admin_password>]"
+    echo "Usage: add-instance.sh <name> [--email <admin_email>] [--password <admin_password>] [--port <port>] [--memory <limit>]"
     exit 1
 fi
 
@@ -153,13 +158,13 @@ fi
 # 4. Add to manifest using jq if available
 if command -v jq >/dev/null 2>&1; then
     TMP_FILE=$(mktemp)
-    jq --arg name "$INSTANCE_NAME" --argjson port "$NEXT_PORT" \
-        '.[$name] = {"port": $port, "status": "running", "created": (now | strftime("%Y-%m-%dT%H:%M:%SZ"))}' \
+    jq --arg name "$INSTANCE_NAME" --argjson port "$NEXT_PORT" --arg mem "$MEMORY_LIMIT" \
+        '.[$name] = {"port": $port, "status": "running", "created": (now | strftime("%Y-%m-%dT%H:%M:%SZ")), "memory": $mem}' \
         "$MANIFEST_FILE" > "$TMP_FILE"
     mv "$TMP_FILE" "$MANIFEST_FILE"
 else
     # Fallback: simple JSON manipulation
-    sed -i "s/{}$/{\n  \"$INSTANCE_NAME\": {\"port\": $NEXT_PORT, \"status\": \"running\", \"created\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}\n}/" "$MANIFEST_FILE"
+    sed -i "s/{}$/{\n  \"$INSTANCE_NAME\": {\"port\": $NEXT_PORT, \"status\": \"running\", \"created\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\", \"memory\": \"$MEMORY_LIMIT\"}\n}/" "$MANIFEST_FILE"
 fi
 
 echo "Instance '$INSTANCE_NAME' added to manifest with port $NEXT_PORT"
@@ -180,7 +185,7 @@ stdout_logfile_maxbytes=10MB
 stderr_logfile_backups=3
 stdout_logfile_backups=3
 user=root
-environment=HOME="/root"
+environment=HOME="/root"$(test -n "$MEMORY_LIMIT" && echo ",GOMEMLIMIT=\"$MEMORY_LIMIT\"")
 EOF
 
 # 6. Reload supervisord to start the service

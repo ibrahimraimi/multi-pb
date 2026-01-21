@@ -1,0 +1,84 @@
+# CLI Reference
+
+All commands are run inside the Docker container:
+
+```bash
+docker exec multipb <command> [args...]
+```
+
+## Instance Management
+
+### `add-instance.sh`
+
+Create and start a new instance.
+
+```bash
+# Basic usage
+add-instance.sh <name>
+
+# With admin credentials
+add-instance.sh myapp --email admin@example.com --password secret123
+
+# Set memory limit (Supports format: 512MB, 1GiB, etc.)
+add-instance.sh myapp --memory 512MB
+```
+
+### `list-instances.sh`
+
+List all instances with their status and port.
+
+### `start-instance.sh` / `stop-instance.sh`
+
+Start or stop a specific instance.
+
+```bash
+stop-instance.sh myapp
+start-instance.sh myapp
+```
+
+### `remove-instance.sh`
+
+Stop and delete an instance. Add `--delete-data` to remove data on disk.
+
+```bash
+remove-instance.sh myapp --delete-data
+```
+
+## Import / Export
+
+### `import-instance.sh`
+
+Import an instance from a ZIP backup.
+
+```bash
+# Upload zip to server first, then run:
+import-instance.sh /path/to/backup.zip new-instance-name
+```
+
+## Maintenance
+
+### `backup-instance.sh`
+
+Create a ZIP backup of an instance's data.
+
+```bash
+backup-instance.sh myapp
+```
+
+### `restore-instance.sh`
+
+Restore an instance from a previous backup.
+
+```bash
+restore-instance.sh myapp backup-filename.zip
+```
+
+### `view-logs.sh`
+
+View logs for an instance.
+
+```bash
+view-logs.sh myapp
+view-logs.sh myapp --follow
+view-logs.sh myapp --stderr
+```
