@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import LogsPanel from './LogsPanel.svelte';
@@ -13,6 +13,15 @@
 	let backups = [];
 	let creatingBackup = false;
 	let restoringBackup = null;
+	
+	// Version management
+	let showVersionModal = false;
+	let availableVersions: string[] = [];
+	let installedVersions: string[] = [];
+	let latestVersion = '';
+	let selectedUpgradeVersion = '';
+	let upgrading = false;
+	let loadingVersions = false;
 	
 	$: instanceName = $page.params.name;
 	const API_BASE = '/api';
@@ -82,6 +91,69 @@
 		} finally {
 			restoringBackup = null;
 		}
+	}
+
+	async function fetchVersions() {
+		loadingVersions = true;
+		try {
+			const latestRes = await fetch(`${API_BASE}/versions/latest`);
+			if (latestRes.ok) {
+				const data = await latestRes.json();
+				latestVersion = data.version || '';
+			}
+
+			const installedRes = await fetch(`${API_BASE}/versions/installed`);
+			if (installedRes.ok) {
+				const data = await installedRes.json();
+				installedVersions = data.versions || [];
+			}
+
+			const availableRes = await fetch(`${API_BASE}/versions/available`);
+			if (availableRes.ok) {
+				const data = await availableRes.json();
+				availableVersions = data.versions || [];
+			}
+
+			// Set default selected version to current or latest
+			selectedUpgradeVersion = instance?.version || latestVersion;
+		} catch (e) {
+			console.error('Failed to fetch versions:', e);
+		} finally {
+			loadingVersions = false;
+		}
+	}
+
+	async function upgradeInstance() {
+		if (!selectedUpgradeVersion) return;
+		if (selectedUpgradeVersion === instance?.version) {
+			showVersionModal = false;
+			return;
+		}
+
+		if (!confirm(`Upgrade instance to v${selectedUpgradeVersion}? The instance will be stopped, upgraded, and restarted.`)) return;
+
+		upgrading = true;
+		try {
+			const res = await fetch(`${API_BASE}/instances/${instanceName}/upgrade`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ version: selectedUpgradeVersion })
+			});
+			const result = await res.json();
+			if (!res.ok) throw new Error(result.error || 'Failed to upgrade');
+			await fetchInstance();
+			showVersionModal = false;
+		} catch (e) {
+			error = e.message;
+		} finally {
+			upgrading = false;
+		}
+	}
+
+	function openVersionModal() {
+		selectedUpgradeVersion = instance?.version || latestVersion;
+		fetchVersions();
+		showVersionModal = true;
 	}
 
 	onMount(() => {
@@ -233,6 +305,15 @@
 								<dd class="text-white font-mono">{instance.port}</dd>
 							</div>
 							<div class="flex justify-between py-2 border-b border-gray-800/50">
+								<dt class="text-gray-500">Version</dt>
+								<dd class="flex items-center gap-2">
+									<span class="text-white font-mono">{instance.version || 'unknown'}</span>
+									<button on:click={openVersionModal} class="text-xs px-2 py-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded transition-all">
+										Change
+									</button>
+								</dd>
+							</div>
+							<div class="flex justify-between py-2 border-b border-gray-800/50">
 								<dt class="text-gray-500">Created</dt>
 								<dd class="text-white">{formatDate(instance.created)}</dd>
 							</div>
@@ -307,6 +388,58 @@
 		{/if}
 	</div>
 </div>
+
+<!-- Version Upgrade Modal -->
+{#if showVersionModal}
+	<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+	<div class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" on:click|self={() => showVersionModal = false}>
+		<div class="bg-[#111] rounded-2xl p-6 w-full max-w-md border border-gray-800">
+			<h2 class="text-xl font-bold text-white mb-5">Change PocketBase Version</h2>
+			
+			<div class="mb-4">
+				<p class="text-sm text-gray-400 mb-2">Current version: <span class="text-white font-mono">{instance?.version || 'unknown'}</span></p>
+				{#if latestVersion}
+					<p class="text-xs text-gray-500">Latest version: <span class="text-emerald-400 font-mono">{latestVersion}</span></p>
+				{/if}
+			</div>
+
+			<div class="mb-6">
+				<label for="upgrade-version" class="block text-xs font-medium text-gray-500 uppercase mb-2">Select Version</label>
+				{#if loadingVersions}
+					<div class="w-full bg-[#0a0a0a] border border-gray-800 rounded-lg px-4 py-2.5 text-gray-500 text-sm">
+						Loading versions...
+					</div>
+				{:else}
+					<select
+						id="upgrade-version"
+						bind:value={selectedUpgradeVersion}
+						class="w-full bg-[#0a0a0a] border border-gray-800 rounded-lg px-4 py-2.5 focus:outline-none focus:border-emerald-500/50 transition-all text-white text-sm"
+					>
+						{#if latestVersion}
+							<option value={latestVersion}>{latestVersion} (latest)</option>
+						{/if}
+						{#each installedVersions.filter(v => v !== latestVersion) as version}
+							<option value={version}>{version}</option>
+						{/each}
+						{#each availableVersions.slice(0, 15).filter(v => !installedVersions.includes(v) && v !== latestVersion) as version}
+							<option value={version}>{version} (download)</option>
+						{/each}
+					</select>
+					<p class="text-xs text-gray-600 mt-1">Version will be downloaded if not installed</p>
+				{/if}
+			</div>
+
+			<div class="flex gap-3">
+				<button on:click={() => showVersionModal = false} class="flex-1 px-4 py-2.5 border border-gray-700 rounded-lg font-medium text-gray-400 hover:bg-gray-800/50 transition-all text-sm">
+					Cancel
+				</button>
+				<button on:click={upgradeInstance} disabled={upgrading || !selectedUpgradeVersion || selectedUpgradeVersion === instance?.version} class="flex-1 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-black rounded-lg font-semibold transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+					{upgrading ? 'Upgrading...' : 'Upgrade'}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
 
 <style>
 	:global(body) {

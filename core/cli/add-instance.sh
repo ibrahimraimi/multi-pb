@@ -15,6 +15,7 @@ ADMIN_EMAIL=""
 ADMIN_PASSWORD=""
 CUSTOM_PORT=""
 MEMORY_LIMIT=""
+VERSION=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -34,6 +35,10 @@ while [ $# -gt 0 ]; do
             MEMORY_LIMIT="$2"
             shift 2
             ;;
+        --version)
+            VERSION="$2"
+            shift 2
+            ;;
         *)
             if [ -z "$INSTANCE_NAME" ]; then
                 INSTANCE_NAME="$1"
@@ -44,8 +49,53 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$INSTANCE_NAME" ]; then
-    echo "Usage: add-instance.sh <name> [--email <admin_email>] [--password <admin_password>] [--port <port>] [--memory <limit>]"
+    echo "Usage: add-instance.sh <name> [--email <admin_email>] [--password <admin_password>] [--port <port>] [--memory <limit>] [--version <version>]"
     exit 1
+fi
+
+# Determine PocketBase version to use
+if [ -z "$VERSION" ]; then
+    # Get latest version if not specified
+    if command -v manage-versions.sh >/dev/null 2>&1; then
+        VERSION=$(/usr/local/bin/manage-versions.sh latest 2>/dev/null || echo "")
+    fi
+    # Fallback to default if still empty
+    if [ -z "$VERSION" ]; then
+        VERSION="0.23.4"
+    fi
+fi
+
+# Ensure version is downloaded
+echo "Ensuring PocketBase v$VERSION is available..."
+if command -v manage-versions.sh >/dev/null 2>&1; then
+    # Download version and capture output
+    # The download function outputs status to stderr and path to stdout
+    # Since we capture both with 2>&1, we need to extract just the path
+    DOWNLOAD_OUTPUT=$(/usr/local/bin/manage-versions.sh download "$VERSION" 2>&1)
+    DOWNLOAD_EXIT=$?
+    
+    if [ $DOWNLOAD_EXIT -ne 0 ]; then
+        echo "$DOWNLOAD_OUTPUT" >&2
+        echo "Error: Failed to download version $VERSION" >&2
+        exit 1
+    fi
+    
+    # Extract the binary path - it's always the last line that starts with /
+    PB_BINARY=$(echo "$DOWNLOAD_OUTPUT" | grep '^/' | tail -n1 | tr -d '\n\r')
+    
+    # Fallback: if extraction failed, use the path command
+    if [ -z "$PB_BINARY" ] || [ ! -f "$PB_BINARY" ]; then
+        PB_BINARY=$(/usr/local/bin/manage-versions.sh path "$VERSION" 2>/dev/null)
+    fi
+    
+    # Verify it exists and is executable
+    if [ -z "$PB_BINARY" ] || [ ! -f "$PB_BINARY" ] || [ ! -x "$PB_BINARY" ]; then
+        echo "Error: Downloaded binary not found or not executable for version $VERSION" >&2
+        exit 1
+    fi
+else
+    # Fallback to default binary
+    PB_BINARY="/usr/local/bin/pocketbase"
 fi
 
 # Sanitize instance name (alphanumeric and hyphens only)
@@ -134,7 +184,7 @@ mkdir -p "$INSTANCE_DIR"
 DB_FILE="$INSTANCE_DIR/data.db"
 if [ ! -f "$DB_FILE" ]; then
     echo "Initializing database and running migrations..."
-    if ! /usr/local/bin/pocketbase migrate up --dir="$INSTANCE_DIR"; then
+    if ! "$PB_BINARY" migrate up --dir="$INSTANCE_DIR"; then
         echo "Warning: Initial migration had issues, but continuing..."
     fi
 fi
@@ -148,7 +198,7 @@ if [ -z "$ADMIN_PASSWORD" ]; then
 fi
 
 echo "Creating admin user..."
-if /usr/local/bin/pocketbase superuser create "$ADMIN_EMAIL" "$ADMIN_PASSWORD" --dir="$INSTANCE_DIR"; then
+if "$PB_BINARY" superuser create "$ADMIN_EMAIL" "$ADMIN_PASSWORD" --dir="$INSTANCE_DIR"; then
     ADMIN_CREATED=true
 else
     ADMIN_CREATED=false
@@ -158,13 +208,13 @@ fi
 # 4. Add to manifest using jq if available
 if command -v jq >/dev/null 2>&1; then
     TMP_FILE=$(mktemp)
-    jq --arg name "$INSTANCE_NAME" --argjson port "$NEXT_PORT" --arg mem "$MEMORY_LIMIT" \
-        '.[$name] = {"port": $port, "status": "running", "created": (now | strftime("%Y-%m-%dT%H:%M:%SZ")), "memory": $mem}' \
+    jq --arg name "$INSTANCE_NAME" --argjson port "$NEXT_PORT" --arg mem "$MEMORY_LIMIT" --arg ver "$VERSION" \
+        '.[$name] = {"port": $port, "status": "running", "created": (now | strftime("%Y-%m-%dT%H:%M:%SZ")), "memory": $mem, "version": $ver}' \
         "$MANIFEST_FILE" > "$TMP_FILE"
     mv "$TMP_FILE" "$MANIFEST_FILE"
 else
     # Fallback: simple JSON manipulation
-    sed -i "s/{}$/{\n  \"$INSTANCE_NAME\": {\"port\": $NEXT_PORT, \"status\": \"running\", \"created\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\", \"memory\": \"$MEMORY_LIMIT\"}\n}/" "$MANIFEST_FILE"
+    sed -i "s/{}$/{\n  \"$INSTANCE_NAME\": {\"port\": $NEXT_PORT, \"status\": \"running\", \"created\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\", \"memory\": \"$MEMORY_LIMIT\", \"version\": \"$VERSION\"}\n}/" "$MANIFEST_FILE"
 fi
 
 echo "Instance '$INSTANCE_NAME' added to manifest with port $NEXT_PORT"
@@ -173,7 +223,7 @@ echo "Instance '$INSTANCE_NAME' added to manifest with port $NEXT_PORT"
 SUPERVISOR_CONF="/etc/supervisor/conf.d/${INSTANCE_NAME}.conf"
 cat > "$SUPERVISOR_CONF" << EOF
 [program:pb-${INSTANCE_NAME}]
-command=/usr/local/bin/pocketbase serve --dir=${INSTANCE_DIR} --http=127.0.0.1:${NEXT_PORT}
+command=${PB_BINARY} serve --dir=${INSTANCE_DIR} --http=127.0.0.1:${NEXT_PORT}
 directory=${INSTANCE_DIR}
 autostart=true
 autorestart=true

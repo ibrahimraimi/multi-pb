@@ -23,6 +23,7 @@ mkdir -p /var/log/multipb
 mkdir -p /etc/caddy
 mkdir -p /etc/supervisor/conf.d
 mkdir -p /var/multipb
+mkdir -p /var/multipb/versions
 
 # Initialize manifest if it doesn't exist
 if [ ! -f "$MANIFEST_FILE" ]; then
@@ -99,16 +100,32 @@ if [ -f "$MANIFEST_FILE" ] && command -v jq >/dev/null 2>&1; then
         echo "Found $INSTANCE_COUNT instance(s) to restore"
         
         # Use a portable while loop
-        jq -r 'to_entries[] | "\(.key) \(.value.port)"' "$MANIFEST_FILE" | while read -r instance_name port; do
+        jq -r 'to_entries[] | "\(.key) \(.value.port) \(.value.version // "0.23.4")"' "$MANIFEST_FILE" | while read -r instance_name port version; do
             INSTANCE_DIR="${MULTIPB_DATA_DIR}/${instance_name}"
             mkdir -p "$INSTANCE_DIR"
+            
+            # Determine PocketBase binary path
+            PB_BINARY="/usr/local/bin/pocketbase"
+            if [ -n "$version" ] && command -v manage-versions.sh >/dev/null 2>&1; then
+                # Try to get version-specific binary
+                if VERSION_BINARY=$(/usr/local/bin/manage-versions.sh path "$version" 2>/dev/null); then
+                    PB_BINARY="$VERSION_BINARY"
+                else
+                    # Download version if not available
+                    echo "  Downloading PocketBase v$version for $instance_name..."
+                    /usr/local/bin/manage-versions.sh download "$version" >/dev/null 2>&1 && \
+                        PB_BINARY=$(/usr/local/bin/manage-versions.sh path "$version" 2>/dev/null) || \
+                        echo "  Warning: Failed to download v$version, using default binary"
+                fi
+            fi
             
             # Create supervisord config for this instance
             SUPERVISOR_CONF="/etc/supervisor/conf.d/${instance_name}.conf"
             if [ ! -f "$SUPERVISOR_CONF" ]; then
+                MEMORY_LIMIT=$(jq -r --arg name "$instance_name" '.[$name].memory // ""' "$MANIFEST_FILE" 2>/dev/null || echo "")
                 cat > "$SUPERVISOR_CONF" << EOF
 [program:pb-${instance_name}]
-command=/usr/local/bin/pocketbase serve --dir=${INSTANCE_DIR} --http=127.0.0.1:${port}
+command=${PB_BINARY} serve --dir=${INSTANCE_DIR} --http=127.0.0.1:${port}
 directory=${INSTANCE_DIR}
 autostart=true
 autorestart=true
@@ -120,9 +137,9 @@ stdout_logfile_maxbytes=10MB
 stderr_logfile_backups=3
 stdout_logfile_backups=3
 user=root
-environment=HOME="/root"
+environment=HOME="/root"$(test -n "$MEMORY_LIMIT" && echo ",GOMEMLIMIT=\"$MEMORY_LIMIT\"")
 EOF
-                echo "  - $instance_name (port $port)"
+                echo "  - $instance_name (port $port, version ${version:-default})"
             fi
         done
     else

@@ -1,9 +1,6 @@
 services:
   multipb:
-    build:
-      context: /Users/n3rd/code/libs/multi-pb
-      args:
-        SKIP_DASHBOARD: "true"
+    build: /Users/n3rd/code/libs/multi-pb
     container_name: multipb
     restart: unless-stopped
     ports:

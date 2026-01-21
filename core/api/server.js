@@ -15,6 +15,7 @@ const LOG_DIR = "/var/log/multipb";
 const BACKUP_DIR = "/var/multipb/backups";
 const CONFIG_FILE = "/var/multipb/data/config.json";
 const HISTORY_FILE = "/var/multipb/data/health_history.json";
+const VERSIONS_DIR = "/var/multipb/versions";
 
 let config = {};
 let healthHistory = {};
@@ -513,6 +514,7 @@ const server = http.createServer(async (req, res) => {
             port: data.port,
             status: data.status || "unknown",
             created: data.created || null,
+            version: data.version || null,
             ...details,
           };
         }),
@@ -551,7 +553,7 @@ const server = http.createServer(async (req, res) => {
 
     // POST /api/instances
     if (pathname === "/api/instances" && req.method === "POST") {
-      const { name, email, password, port, memory } = await parseBody(req);
+      const { name, email, password, port, memory, version } = await parseBody(req);
       if (!name) return sendJson(400, { error: "Instance name required" });
 
       // Validate port if provided
@@ -577,6 +579,7 @@ const server = http.createServer(async (req, res) => {
       if (password) args.push("--password", password);
       if (port) args.push("--port", port.toString());
       if (memory) args.push("--memory", memory);
+      if (version) args.push("--version", version);
 
       const result = await execScript("add-instance.sh", args);
       if (result.success) {
@@ -588,7 +591,9 @@ const server = http.createServer(async (req, res) => {
           },
         });
       }
-      return sendJson(500, { error: result.error || result.stderr });
+      // Include both stderr and stdout in error message for better debugging
+      const errorMsg = result.stderr || result.stdout || result.error || "Unknown error";
+      return sendJson(500, { error: errorMsg });
     }
 
     // POST /api/import?name=xxx
@@ -642,6 +647,7 @@ const server = http.createServer(async (req, res) => {
         port: data.port,
         status: data.status,
         created: data.created,
+        version: data.version || null,
         ...details,
         backups,
         history,
@@ -768,6 +774,158 @@ const server = http.createServer(async (req, res) => {
         return;
       } catch (e) {
         return sendJson(404, { error: "Backup not found" });
+      }
+    }
+
+    // === VERSION MANAGEMENT ===
+
+    // GET /api/versions/latest
+    if (pathname === "/api/versions/latest" && req.method === "GET") {
+      try {
+        const { stdout } = await execAsync(
+          "/usr/local/bin/manage-versions.sh latest",
+        );
+        const version = stdout.trim();
+        return sendJson(200, { version });
+      } catch (e) {
+        return sendJson(500, { error: e.message });
+      }
+    }
+
+    // GET /api/versions/available
+    if (pathname === "/api/versions/available" && req.method === "GET") {
+      try {
+        const { stdout } = await execAsync(
+          "/usr/local/bin/manage-versions.sh available",
+        );
+        const versions = stdout
+          .trim()
+          .split("\n")
+          .filter((v) => v);
+        return sendJson(200, { versions });
+      } catch (e) {
+        return sendJson(500, { error: e.message });
+      }
+    }
+
+    // GET /api/versions/installed
+    if (pathname === "/api/versions/installed" && req.method === "GET") {
+      try {
+        const { stdout } = await execAsync(
+          "/usr/local/bin/manage-versions.sh installed",
+        );
+        const versions = stdout
+          .trim()
+          .split("\n")
+          .filter((v) => v);
+        return sendJson(200, { versions });
+      } catch (e) {
+        return sendJson(200, { versions: [] });
+      }
+    }
+
+    // POST /api/versions/download
+    if (pathname === "/api/versions/download" && req.method === "POST") {
+      const { version } = await parseBody(req);
+      if (!version) return sendJson(400, { error: "Version required" });
+
+      try {
+        const result = await execScript("manage-versions.sh", [
+          "download",
+          version,
+        ]);
+        if (result.success) {
+          return sendJson(200, { success: true, version });
+        }
+        return sendJson(500, { error: result.error || result.stderr });
+      } catch (e) {
+        return sendJson(500, { error: e.message });
+      }
+    }
+
+    // DELETE /api/versions/:version
+    const versionDeleteMatch = pathname.match(/^\/api\/versions\/([^\/]+)$/);
+    if (versionDeleteMatch && req.method === "DELETE") {
+      const version = versionDeleteMatch[1];
+      try {
+        const result = await execScript("manage-versions.sh", [
+          "delete",
+          version,
+        ]);
+        if (result.success) {
+          return sendJson(200, { success: true });
+        }
+        return sendJson(500, { error: result.error || result.stderr });
+      } catch (e) {
+        return sendJson(500, { error: e.message });
+      }
+    }
+
+    // POST /api/instances/:name/upgrade
+    const upgradeMatch = pathname.match(/^\/api\/instances\/([^\/]+)\/upgrade$/);
+    if (upgradeMatch && req.method === "POST") {
+      const name = upgradeMatch[1];
+      const { version } = await parseBody(req);
+      if (!version) return sendJson(400, { error: "Version required" });
+
+      try {
+        // Stop instance
+        await execScript("stop-instance.sh", [name]);
+
+        // Download version if not installed
+        await execScript("manage-versions.sh", ["download", version]);
+
+        // Update manifest
+        const manifest = await readManifest();
+        if (!manifest[name]) {
+          return sendJson(404, { error: "Instance not found" });
+        }
+        manifest[name].version = version;
+        await writeManifest(manifest);
+
+        // Update supervisord config with new binary path
+        const { stdout: binaryPath } = await execAsync(
+          `/usr/local/bin/manage-versions.sh path ${version}`,
+        );
+        const pbBinary = binaryPath.trim();
+
+        const SUPERVISOR_CONF = `/etc/supervisor/conf.d/${name}.conf`;
+        const instanceDir = path.join(DATA_DIR, name);
+        const instanceData = manifest[name];
+
+        await fs.writeFile(
+          SUPERVISOR_CONF,
+          `[program:pb-${name}]
+command=${pbBinary} serve --dir=${instanceDir} --http=127.0.0.1:${instanceData.port}
+directory=${instanceDir}
+autostart=true
+autorestart=true
+startretries=3
+stderr_logfile=/var/log/multipb/${name}.err.log
+stdout_logfile=/var/log/multipb/${name}.log
+stderr_logfile_maxbytes=10MB
+stdout_logfile_maxbytes=10MB
+stderr_logfile_backups=3
+stdout_logfile_backups=3
+user=root
+environment=HOME="/root"${instanceData.memory ? `,GOMEMLIMIT="${instanceData.memory}"` : ""}
+`,
+        );
+
+        // Reload supervisord
+        await execAsync(
+          "supervisorctl -c /etc/supervisor/supervisord.conf -s unix:///var/run/supervisor.sock reread",
+        );
+        await execAsync(
+          "supervisorctl -c /etc/supervisor/supervisord.conf -s unix:///var/run/supervisor.sock update",
+        );
+
+        // Start instance
+        await execScript("start-instance.sh", [name]);
+
+        return sendJson(200, { success: true, version });
+      } catch (e) {
+        return sendJson(500, { error: e.message });
       }
     }
 
