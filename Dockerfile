@@ -51,6 +51,9 @@ RUN mkdir -p /var/multipb/data \
 COPY core/cli/*.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/*.sh
 
+# Create versions directory
+RUN mkdir -p /var/multipb/versions
+
 # Copy entrypoint
 COPY core/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

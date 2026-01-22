@@ -8,6 +8,7 @@
 		healthy?: boolean;
 		size?: string;
 		created?: string;
+		version?: string;
 	}
 	
 	interface Credentials {
@@ -33,6 +34,11 @@
 	let customPassword = '';
 	let portError = '';
 	let portChecking = false;
+	let selectedVersion = '';
+	let availableVersions: string[] = [];
+	let installedVersions: string[] = [];
+	let latestVersion = '';
+	let loadingVersions = false;
 
 	const API_BASE = '/api';
 
@@ -58,6 +64,39 @@
 			}
 		} catch (e) {
 			// Stats not critical
+		}
+	}
+
+	async function fetchVersions() {
+		loadingVersions = true;
+		try {
+			// Get latest version
+			const latestRes = await fetch(`${API_BASE}/versions/latest`);
+			if (latestRes.ok) {
+				const data = await latestRes.json();
+				latestVersion = data.version || '';
+				if (!selectedVersion) {
+					selectedVersion = latestVersion;
+				}
+			}
+
+			// Get installed versions
+			const installedRes = await fetch(`${API_BASE}/versions/installed`);
+			if (installedRes.ok) {
+				const data = await installedRes.json();
+				installedVersions = data.versions || [];
+			}
+
+			// Get available versions (limited list)
+			const availableRes = await fetch(`${API_BASE}/versions/available`);
+			if (availableRes.ok) {
+				const data = await availableRes.json();
+				availableVersions = data.versions || [];
+			}
+		} catch (e) {
+			console.error('Failed to fetch versions:', e);
+		} finally {
+			loadingVersions = false;
 		}
 	}
 
@@ -104,7 +143,8 @@
 				name: newInstanceName.trim(),
 				port: customPort ? parseInt(customPort, 10) : undefined,
 				email: customEmail ? customEmail.trim() : undefined,
-				password: customPassword || undefined
+				password: customPassword || undefined,
+				version: selectedVersion || undefined
 			};
 			
 			const res = await fetch(`${API_BASE}/instances`, {
@@ -161,6 +201,7 @@
 	onMount(() => {
 		fetchInstances();
 		fetchStats();
+		fetchVersions();
 		const interval = setInterval(() => {
 			fetchInstances();
 			fetchStats();
@@ -190,6 +231,10 @@
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
                 Dashboard
             </button>
+            <a href="https://pocketbase.io/docs" target="_blank" rel="noopener" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-500 hover:bg-gray-800/50 hover:text-gray-300 font-medium text-sm transition-all">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+                PocketBase Docs
+            </a>
         </nav>
 
         <div class="mt-auto pt-4 border-t border-gray-800/50">
@@ -210,9 +255,15 @@
                 <h1 class="text-2xl font-bold text-white mb-1">Dashboard</h1>
                 <p class="text-gray-500 text-sm">Manage your PocketBase instances</p>
             </div>
-            <button on:click={() => showAddModal = true} class="bg-emerald-500 hover:bg-emerald-600 text-black px-5 py-2.5 rounded-lg font-semibold text-sm transition-all">
-                + Create Instance
-            </button>
+            <div class="flex items-center gap-3">
+                <a href="https://pocketbase.io/docs" target="_blank" rel="noopener" class="px-4 py-2.5 border border-gray-700 hover:bg-gray-800/50 text-gray-300 rounded-lg font-medium text-sm transition-all flex items-center gap-2">
+                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                    Search Docs
+                </a>
+                <button on:click={() => showAddModal = true} class="bg-emerald-500 hover:bg-emerald-600 text-black px-5 py-2.5 rounded-lg font-semibold text-sm transition-all">
+                    + Create Instance
+                </button>
+            </div>
         </header>
 
         {#if error}
@@ -279,6 +330,7 @@
                                 <th class="px-6 py-4">Instance</th>
                                 <th class="px-6 py-4">Status</th>
                                 <th class="px-6 py-4">Port</th>
+                                <th class="px-6 py-4">Version</th>
                                 <th class="px-6 py-4">Size</th>
                                 {#if instances.some(i => i.created)}
                                     <th class="px-6 py-4">Created</th>
@@ -304,6 +356,11 @@
                                         </span>
                                     </td>
                                     <td class="px-6 py-4 text-sm text-gray-400 font-mono">{instance.port}</td>
+                                    <td class="px-6 py-4">
+                                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-700/50 text-gray-400">
+                                            {instance.version || 'unknown'}
+                                        </span>
+                                    </td>
                                     <td class="px-6 py-4 text-sm text-gray-400">{instance.size || '-'}</td>
                                     {#if instances.some(i => i.created)}
                                         <td class="px-6 py-4 text-sm text-gray-500">
@@ -415,6 +472,32 @@
                                 class="w-full bg-[#0a0a0a] border border-gray-800 rounded-lg px-4 py-2.5 focus:outline-none focus:border-emerald-500/50 transition-all text-white placeholder-gray-600 text-sm"
                             />
                             <p class="text-xs text-gray-600 mt-1">Min 8 characters recommended</p>
+                        </div>
+                        
+                        <div class="pl-4">
+                            <label for="version-select" class="block text-xs font-medium text-gray-500 uppercase mb-2">PocketBase Version</label>
+                            {#if loadingVersions}
+                                <div class="w-full bg-[#0a0a0a] border border-gray-800 rounded-lg px-4 py-2.5 text-gray-500 text-sm">
+                                    Loading versions...
+                                </div>
+                            {:else}
+                                <select
+                                    id="version-select"
+                                    bind:value={selectedVersion}
+                                    class="w-full bg-[#0a0a0a] border border-gray-800 rounded-lg px-4 py-2.5 focus:outline-none focus:border-emerald-500/50 transition-all text-white text-sm"
+                                >
+                                    {#if latestVersion}
+                                        <option value={latestVersion}>{latestVersion} (latest)</option>
+                                    {/if}
+                                    {#each installedVersions.filter(v => v !== latestVersion) as version}
+                                        <option value={version}>{version}</option>
+                                    {/each}
+                                    {#each availableVersions.slice(0, 10).filter(v => !installedVersions.includes(v) && v !== latestVersion) as version}
+                                        <option value={version}>{version} (download)</option>
+                                    {/each}
+                                </select>
+                                <p class="text-xs text-gray-600 mt-1">Version will be downloaded if not installed</p>
+                            {/if}
                         </div>
                     </div>
                 {/if}
