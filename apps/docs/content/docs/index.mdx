@@ -1,0 +1,27 @@
+---
+title: Quick Start
+description: Get Multi-PB up and running in minutes
+---
+
+The fastest way to get started is using the installer script:
+
+```bash
+git clone https://github.com/n3-rd/multi-pb.git
+cd multi-pb
+./install.sh
+```
+
+### Installer Options
+
+- `--cli-only`: Skip building the dashboard (useful for minimal setups)
+- `--port <port>`: Specify a custom external port (default: 25983)
+- `--non-interactive`: Skip all prompts (uses defaults)
+- `--domain <domain>`: Enable HTTPS support with Caddy
+
+## Next Steps
+
+<Cards>
+  <Card title="Installation" href="/docs/installation" description="Detailed installation and deployment guide" />
+  <Card title="CLI Reference" href="/docs/cli" description="Manage instances from the command line" />
+  <Card title="API Reference" href="/docs/api" description="Integrate with the Multi-PB API" />
+</Cards>
