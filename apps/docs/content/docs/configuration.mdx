@@ -8,13 +8,15 @@ description: Global configuration and environment variables
 - `MULTIPB_PORT`: Main entrypoint port (default: 25983)
 - `MULTIPB_DATA_DIR`: Directory for instance data (default: `/var/multipb/data`)
 - `MULTIPB_DOMAIN`: Domain name for Caddy auto-HTTPS
+- `MULTIPB_ADMIN_TOKEN`: Optional admin token for API authorization (see Security section below)
 
 ## Global Config (`config.json`)
 
-Located at `/var/multipb/data/config.json`. Controls monitoring and notifications.
+Located at `/var/multipb/data/config.json`. Controls monitoring, notifications, and security.
 
 ```json
 {
+  "adminToken": "",  // Optional: Admin token for API authorization
   "notifications": {
     "webhookUrl": "https://discord.com/api/webhooks/...",
     "events": {
@@ -28,6 +30,35 @@ Located at `/var/multipb/data/config.json`. Controls monitoring and notification
   }
 }
 ```
+
+## Security
+
+### API Authorization
+
+Multi-PB supports optional API authorization to protect management operations. When enabled, all write operations (POST, PUT, DELETE) require a valid admin token.
+
+**Enable via Environment Variable:**
+```bash
+MULTIPB_ADMIN_TOKEN=your-secret-token-here
+```
+
+**Or via config.json:**
+```json
+{
+  "adminToken": "your-secret-token-here"
+}
+```
+
+When a token is configured:
+- Write operations require `Authorization: Bearer <token>` header
+- Read operations (GET) remain open for monitoring
+- 401 Unauthorized is returned for invalid/missing tokens
+
+**Best Practices:**
+- Use a strong, randomly generated token (32+ characters recommended)
+- Never commit tokens to version control
+- Store tokens securely (environment variables, secrets manager)
+- Rotate tokens periodically
 
 ## Resource Limits
 

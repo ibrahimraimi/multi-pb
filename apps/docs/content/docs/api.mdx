@@ -7,6 +7,34 @@ The internal API server runs on port 3001 inside the container but is exposed vi
 
 Base URL: `http://localhost:25983/api`
 
+## Authorization
+
+API authorization is **optional** and can be enabled by configuring an admin token.
+
+### Enabling Authorization
+
+Set an admin token using either:
+
+1. **Environment Variable**: `MULTIPB_ADMIN_TOKEN=your-secret-token`
+2. **Config File**: Add `"adminToken": "your-secret-token"` to `/var/multipb/data/config.json`
+
+When a token is configured, all write operations (POST, PUT, DELETE) require the token in the `Authorization` header:
+
+```bash
+curl -X POST http://localhost:25983/api/instances \
+  -H "Authorization: Bearer your-secret-token" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "myapp"}'
+```
+
+**Note**: Read-only operations (GET requests) do not require authorization, even when a token is configured.
+
+### Security Best Practices
+
+- Use a strong, randomly generated token (e.g., 32+ characters)
+- Keep the token secret and never commit it to version control
+- When authorization is not configured, the API is open to all requests - ensure proper network security
+
 ## Instances
 
 ### List Instances
