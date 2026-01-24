@@ -20,6 +20,7 @@ const VERSIONS_DIR = "/var/multipb/versions";
 let config = {};
 let healthHistory = {};
 let lastHealthStatus = {}; // store last status to detect changes
+let adminToken = null; // Admin token for API authorization
 
 async function loadConfig() {
   try {
@@ -31,6 +32,12 @@ async function loadConfig() {
       notifications: { webhookUrl: "" },
       monitoring: { intervalSeconds: 60, historyRetentionCount: 100 },
     };
+  }
+  
+  // Load admin token from environment or config
+  adminToken = process.env.MULTIPB_ADMIN_TOKEN || config.adminToken || null;
+  if (adminToken) {
+    console.log("Admin token configured - API authorization enabled");
   }
 }
 
@@ -464,6 +471,22 @@ async function parseBody(req) {
   return body ? JSON.parse(body) : {};
 }
 
+// Check authorization
+function checkAuthorization(authHeader) {
+  // If no admin token is configured, allow all requests
+  if (!adminToken) {
+    return true;
+  }
+  
+  // If admin token is configured, require valid Bearer token
+  if (!authHeader) {
+    return false;
+  }
+  
+  const token = authHeader.replace(/^Bearer\s+/i, "");
+  return token === adminToken;
+}
+
 const server = http.createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader(
@@ -488,6 +511,12 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(status, { "Content-Type": "application/json" });
     res.end(JSON.stringify(data));
   };
+
+  // Check authorization for write operations (POST, PUT, DELETE)
+  const isWriteOperation = ["POST", "PUT", "DELETE", "PATCH"].includes(req.method);
+  if (isWriteOperation && !checkAuthorization(authToken)) {
+    return sendJson(401, { error: "Unauthorized: Valid admin token required" });
+  }
 
   try {
     // GET /api/stats

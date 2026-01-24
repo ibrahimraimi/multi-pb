@@ -1,4 +1,5 @@
 {
+  "adminToken": "",
   "notifications": {
     "webhookUrl": "",
     "events": {

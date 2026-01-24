@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "API Integration Tests",
   "scripts": {
-    "test": "node --test server.test.js"
+    "test": "node --test server.test.js auth.test.js"
   },
   "dependencies": {
     "supertest": "^6.3.3"
