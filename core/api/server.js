@@ -35,6 +35,7 @@ async function loadConfig() {
   }
   
   // Load admin token from environment or config
+  // Empty strings are falsy and will result in null (authorization disabled)
   adminToken = process.env.MULTIPB_ADMIN_TOKEN || config.adminToken || null;
   if (adminToken) {
     console.log("Admin token configured - API authorization enabled");
@@ -473,8 +474,8 @@ async function parseBody(req) {
 
 // Check authorization
 function checkAuthorization(authHeader) {
-  // If no admin token is configured (null, undefined, or empty string), allow all requests
-  if (!adminToken || adminToken === "") {
+  // If no admin token is configured, allow all requests
+  if (!adminToken) {
     return true;
   }
   

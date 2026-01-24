@@ -4,8 +4,9 @@ const assert = require("node:assert");
 describe("API Authorization Logic", () => {
   // Simulate the checkAuthorization function logic from server.js
   const checkAuthorization = (authHeader, configuredToken) => {
-    // If no admin token is configured (null, undefined, or empty string), allow all requests
-    if (!configuredToken || configuredToken === "") {
+    // If no admin token is configured, allow all requests
+    // (empty strings are falsy in JS, so !configuredToken covers null, undefined, and "")
+    if (!configuredToken) {
       return true;
     }
     
