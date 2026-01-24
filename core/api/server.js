@@ -473,8 +473,8 @@ async function parseBody(req) {
 
 // Check authorization
 function checkAuthorization(authHeader) {
-  // If no admin token is configured, allow all requests
-  if (!adminToken) {
+  // If no admin token is configured (null, undefined, or empty string), allow all requests
+  if (!adminToken || adminToken === "") {
     return true;
   }
   
