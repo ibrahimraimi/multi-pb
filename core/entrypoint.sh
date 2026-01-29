@@ -23,7 +23,7 @@ mkdir -p /var/log/multipb
 mkdir -p /etc/caddy
 mkdir -p /etc/supervisor/conf.d
 mkdir -p /var/multipb
-mkdir -p /var/multipb/versions
+mkdir -p /var/multipb/data/versions
 
 # Initialize manifest if it doesn't exist
 if [ ! -f "$MANIFEST_FILE" ]; then
@@ -92,60 +92,22 @@ priority=100
 EOF
 fi
 
-# Restore existing instances from manifest
-echo "Restoring instances from manifest..."
-if [ -f "$MANIFEST_FILE" ] && command -v jq >/dev/null 2>&1; then
-    INSTANCE_COUNT=$(jq 'length' "$MANIFEST_FILE")
-    if [ "$INSTANCE_COUNT" -gt 0 ]; then
-        echo "Found $INSTANCE_COUNT instance(s) to restore"
-        
-        # Use a portable while loop
-        jq -r 'to_entries[] | "\(.key) \(.value.port) \(.value.version // "0.23.4")"' "$MANIFEST_FILE" | while read -r instance_name port version; do
-            INSTANCE_DIR="${MULTIPB_DATA_DIR}/${instance_name}"
-            mkdir -p "$INSTANCE_DIR"
-            
-            # Determine PocketBase binary path
-            PB_BINARY="/usr/local/bin/pocketbase"
-            if [ -n "$version" ] && command -v manage-versions.sh >/dev/null 2>&1; then
-                # Try to get version-specific binary
-                if VERSION_BINARY=$(/usr/local/bin/manage-versions.sh path "$version" 2>/dev/null); then
-                    PB_BINARY="$VERSION_BINARY"
-                else
-                    # Download version if not available
-                    echo "  Downloading PocketBase v$version for $instance_name..."
-                    /usr/local/bin/manage-versions.sh download "$version" >/dev/null 2>&1 && \
-                        PB_BINARY=$(/usr/local/bin/manage-versions.sh path "$version" 2>/dev/null) || \
-                        echo "  Warning: Failed to download v$version, using default binary"
-                fi
-            fi
-            
-            # Create supervisord config for this instance
-            SUPERVISOR_CONF="/etc/supervisor/conf.d/${instance_name}.conf"
-            if [ ! -f "$SUPERVISOR_CONF" ]; then
-                MEMORY_LIMIT=$(jq -r --arg name "$instance_name" '.[$name].memory // ""' "$MANIFEST_FILE" 2>/dev/null || echo "")
-                cat > "$SUPERVISOR_CONF" << EOF
-[program:pb-${instance_name}]
-command=${PB_BINARY} serve --dir=${INSTANCE_DIR} --http=127.0.0.1:${port}
-directory=${INSTANCE_DIR}
+# Restore instances in background using supervisord
+cat >> /etc/supervisor/supervisord.conf << 'EOF'
+
+[program:restore-instances]
+command=/usr/local/bin/restore-instances.sh
 autostart=true
-autorestart=true
-startretries=3
-stderr_logfile=/var/log/multipb/${instance_name}.err.log
-stdout_logfile=/var/log/multipb/${instance_name}.log
-stderr_logfile_maxbytes=10MB
-stdout_logfile_maxbytes=10MB
-stderr_logfile_backups=3
-stdout_logfile_backups=3
+autorestart=false
+startretries=0
+stderr_logfile=/var/log/multipb/restore.err.log
+stdout_logfile=/var/log/multipb/restore.log
 user=root
-environment=HOME="/root"$(test -n "$MEMORY_LIMIT" && echo ",GOMEMLIMIT=\"$MEMORY_LIMIT\"")
+priority=10
 EOF
-                echo "  - $instance_name (port $port, version ${version:-default})"
-            fi
-        done
-    else
-        echo "No instances to restore"
-    fi
-fi
+
+# Restore logic moved to restore-instances.sh
+echo "Configured background instance restoration"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

@@ -42,6 +42,47 @@ cd multi-pb
 
 Access dashboard at: `http://localhost:25983/dashboard`
 
+## Security: Setting an Admin Token
+
+By default, the API is open to anyone who can reach it. To secure it, set an admin token:
+
+**Option 1: Environment variable (recommended)**
+```bash
+export MULTIPB_ADMIN_TOKEN="$(openssl rand -hex 24)"
+# Or add to docker-compose.yml:
+# environment:
+#   - MULTIPB_ADMIN_TOKEN=your-secret-token-here
+```
+**Important:** Restart the container/server for the environment variable to take effect.
+
+**Option 2: Instant CLI (No restart required)**
+To instantly set or change the token without restarting:
+```bash
+docker exec multipb set-admin-token.sh "your-secret-token-here"
+```
+This updates `config.json` immediately. To remove the token, pass an empty string:
+```bash
+docker exec multipb set-admin-token.sh ""
+```
+
+**Option 3: Config file**
+Edit `/var/multipb/data/config.json`:
+```json
+{
+  "adminToken": "your-secret-token-here"
+}
+```
+The API server watches this file and will reload the token instantly.
+**Note:** The token in `config.json` takes precedence over the environment variable.
+
+**Using the token in the dashboard:**
+1. Open `http://localhost:25983/dashboard`
+2. If the server requires a token, you'll see an **"Admin token required"** modal before accessing the dashboard
+3. Enter your token and click **"Unlock"**
+4. You can also click **"Set token"** in the sidebar anytime to change it
+
+The token is stored in your browser and sent with every API request. See [SECURITY.md](SECURITY.md) for more details and curl examples.
+
 ## Documentation
 
 - [**Installation Guide**](docs/INSTALLATION.md) - Docker Compose, Installer options, Deployment.

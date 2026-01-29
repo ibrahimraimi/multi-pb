@@ -4,7 +4,7 @@ set -e
 # manage-versions.sh - Manage PocketBase versions
 # Usage: manage-versions.sh <command> [args]
 
-VERSIONS_DIR="/var/multipb/versions"
+VERSIONS_DIR="/var/multipb/data/versions"
 MANIFEST_FILE="/var/multipb/data/instances.json"
 
 # Detect architecture

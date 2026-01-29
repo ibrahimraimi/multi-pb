@@ -7,6 +7,51 @@ The internal API server runs on port 3001 inside the container but is exposed vi
 
 Base URL: `http://localhost:25983/api`
 
+## Authorization
+
+API authorization is **optional**. When an admin token is configured, **every** request (GET and write) must send it.
+
+### Enabling Authorization
+
+Set an admin token using either:
+
+1. **Environment Variable**: `MULTIPB_ADMIN_TOKEN=your-secret-token`
+2. **Config File**: Add `"adminToken": "your-secret-token"` to `/var/multipb/data/config.json`
+
+When a token is set, all endpoints require `Authorization: Bearer <token>`.
+
+### Examples
+
+**List instances (GET):**
+```bash
+curl -s http://localhost:25983/api/instances \
+  -H "Authorization: Bearer your-secret-token"
+```
+
+**Create instance (POST):**
+```bash
+curl -X POST http://localhost:25983/api/instances \
+  -H "Authorization: Bearer your-secret-token" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "myapp"}'
+```
+
+**Without token (when token is configured):**
+```bash
+curl -s http://localhost:25983/api/instances
+# → 401 {"error":"Unauthorized","code":"admin_token_required"}
+```
+
+### Dashboard
+
+If the API uses a token, open the dashboard → sidebar **Set token** → enter the same value. It is stored in `localStorage` and sent with every request. After a 401, the unlock modal appears so you can re-enter the token.
+
+### Security Best Practices
+
+- Use a strong, randomly generated token (e.g. `openssl rand -hex 24`)
+- Prefer `MULTIPB_ADMIN_TOKEN` in the environment over `config.json`
+- When no token is set, the API is open to anyone who can reach it—use network/firewall rules or set a token
+
 ## Instances
 
 ### List Instances

@@ -1,19 +1,20 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
+	import { apiFetch } from '$lib/api';
 	import LogsPanel from './LogsPanel.svelte';
-	
+
 	let instance = null;
 	let loading = true;
-	let error = null;
+	let error: string | null = null;
 	let activeTab = 'overview';
 	let actionLoading = '';
-	
+
 	// Backups
-	let backups = [];
+	let backups: { name: string; size?: string; created?: string }[] = [];
 	let creatingBackup = false;
-	let restoringBackup = null;
-	
+	let restoringBackup: string | null = null;
+
 	// Version management
 	let showVersionModal = false;
 	let availableVersions: string[] = [];
@@ -22,13 +23,12 @@
 	let selectedUpgradeVersion = '';
 	let upgrading = false;
 	let loadingVersions = false;
-	
+
 	$: instanceName = $page.params.name;
-	const API_BASE = '/api';
 
 	async function fetchInstance() {
 		try {
-			const res = await fetch(`${API_BASE}/instances/${instanceName}`);
+			const res = await apiFetch(`/instances/${instanceName}`);
 			if (!res.ok) throw new Error('Failed to fetch instance');
 			instance = await res.json();
 			backups = instance.backups || [];
@@ -43,7 +43,7 @@
 	async function toggleInstance(action) {
 		actionLoading = action;
 		try {
-			const res = await fetch(`${API_BASE}/instances/${instanceName}/${action}`, { method: 'POST' });
+			const res = await apiFetch(`/instances/${instanceName}/${action}`, { method: 'POST' });
 			if (!res.ok) throw new Error(`Failed to ${action}`);
 			await fetchInstance();
 		} catch (e) {
@@ -56,7 +56,7 @@
 	async function createBackup() {
 		creatingBackup = true;
 		try {
-			const res = await fetch(`${API_BASE}/instances/${instanceName}/backups`, { method: 'POST' });
+			const res = await apiFetch(`/instances/${instanceName}/backups`, { method: 'POST' });
 			const result = await res.json();
 			if (!res.ok) throw new Error(result.error || 'Failed to create backup');
 			backups = [result.backup, ...backups];
@@ -70,7 +70,7 @@
 	async function deleteBackup(backupName) {
 		if (!confirm(`Delete backup "${backupName}"?`)) return;
 		try {
-			const res = await fetch(`${API_BASE}/instances/${instanceName}/backups/${backupName}`, { method: 'DELETE' });
+			const res = await apiFetch(`/instances/${instanceName}/backups/${backupName}`, { method: 'DELETE' });
 			if (!res.ok) throw new Error('Failed to delete backup');
 			backups = backups.filter(b => b.name !== backupName);
 		} catch (e) {
@@ -78,11 +78,27 @@
 		}
 	}
 
-	async function restoreBackup(backupName) {
+	async function downloadBackup(backupName: string) {
+		try {
+			const res = await apiFetch(`/instances/${instanceName}/backups/${backupName}/download`);
+			if (!res.ok) throw new Error('Download failed');
+			const blob = await res.blob();
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = backupName;
+			a.click();
+			URL.revokeObjectURL(url);
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Download failed';
+		}
+	}
+
+	async function restoreBackup(backupName: string) {
 		if (!confirm(`Restore "${backupName}"? This will stop the instance, replace all data, and restart.`)) return;
 		restoringBackup = backupName;
 		try {
-			const res = await fetch(`${API_BASE}/instances/${instanceName}/backups/${backupName}/restore`, { method: 'POST' });
+			const res = await apiFetch(`/instances/${instanceName}/backups/${backupName}/restore`, { method: 'POST' });
 			const result = await res.json();
 			if (!res.ok) throw new Error(result.error || 'Failed to restore');
 			await fetchInstance();
@@ -96,19 +112,19 @@
 	async function fetchVersions() {
 		loadingVersions = true;
 		try {
-			const latestRes = await fetch(`${API_BASE}/versions/latest`);
+			const latestRes = await apiFetch('/versions/latest');
 			if (latestRes.ok) {
 				const data = await latestRes.json();
 				latestVersion = data.version || '';
 			}
 
-			const installedRes = await fetch(`${API_BASE}/versions/installed`);
+			const installedRes = await apiFetch('/versions/installed');
 			if (installedRes.ok) {
 				const data = await installedRes.json();
 				installedVersions = data.versions || [];
 			}
 
-			const availableRes = await fetch(`${API_BASE}/versions/available`);
+			const availableRes = await apiFetch('/versions/available');
 			if (availableRes.ok) {
 				const data = await availableRes.json();
 				availableVersions = data.versions || [];
@@ -134,7 +150,7 @@
 
 		upgrading = true;
 		try {
-			const res = await fetch(`${API_BASE}/instances/${instanceName}/upgrade`, {
+			const res = await apiFetch(`/instances/${instanceName}/upgrade`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ version: selectedUpgradeVersion })
@@ -362,9 +378,9 @@
 										</div>
 									</div>
 									<div class="flex items-center gap-2">
-										<a href="{API_BASE}/instances/{instanceName}/backups/{backup.name}/download" class="p-2 hover:bg-gray-800 rounded-lg transition-all text-gray-500 hover:text-white" title="Download">
+										<button type="button" on:click={() => downloadBackup(backup.name)} class="p-2 hover:bg-gray-800 rounded-lg transition-all text-gray-500 hover:text-white" title="Download">
 											<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-										</a>
+										</button>
 										<button on:click={() => restoreBackup(backup.name)} disabled={restoringBackup === backup.name} class="p-2 hover:bg-blue-500/10 hover:text-blue-400 rounded-lg transition-all text-gray-500 disabled:opacity-50" title="Restore">
 											{#if restoringBackup === backup.name}
 												<svg class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg>
