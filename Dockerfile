@@ -12,9 +12,12 @@ RUN apk add --no-cache \
     supervisor \
     jq \
     bash \
-    nodejs \
-    npm \
-    util-linux
+    util-linux \
+    libstdc++ \
+    libgcc
+
+# Install Bun
+COPY --from=oven/bun:alpine /usr/local/bin/bun /usr/local/bin/bun
 
 # Detect architecture and download appropriate binaries
 ARG PB_VERSION=0.23.4
@@ -64,9 +67,9 @@ RUN mkdir -p /var/www/dashboard
 COPY apps/dashboard /tmp/dashboard
 WORKDIR /tmp/dashboard
 RUN if [ "$SKIP_DASHBOARD" != "true" ]; then \
-    npm install && \
-    npx svelte-kit sync && \
-    npm run build && \
+    bun install && \
+    bun x svelte-kit sync && \
+    bun run build && \
     cp -r build/* /var/www/dashboard/; \
     else \
     echo "Skipping dashboard build (CLI-only mode)" && \

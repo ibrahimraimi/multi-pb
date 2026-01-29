@@ -72,7 +72,7 @@ user=root
 priority=1
 
 [program:api-server]
-command=/usr/bin/node /usr/local/bin/api-server.js
+command=/usr/local/bin/bun /usr/local/bin/api-server.js
 autostart=true
 autorestart=true
 startretries=5

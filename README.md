@@ -37,6 +37,8 @@ See the [Development Guide](apps/docs/DEVELOPMENT.md) for more details on projec
 ```bash
 git clone https://github.com/n3-rd/multi-pb.git
 cd multi-pb
+# Recommended: Use Bun for speed
+bun install 
 ./install.sh
 ```
 
