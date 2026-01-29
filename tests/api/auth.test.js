@@ -1,22 +1,19 @@
-const { test, describe, after } = require("node:test");
+const { test, describe } = require("node:test");
 const assert = require("node:assert");
+const crypto = require("crypto");
 
 describe("API Authorization Logic", () => {
-  // Simulate the checkAuthorization function logic from server.js
+  // Mirror server.js: constant-time compare when token is set
   const checkAuthorization = (authHeader, configuredToken) => {
-    // If no admin token is configured, allow all requests
-    // (empty strings are falsy in JS, so !configuredToken covers null, undefined, and "")
-    if (!configuredToken) {
-      return true;
-    }
-    
-    // If admin token is configured, require valid Bearer token
-    if (!authHeader) {
+    if (!configuredToken) return true;
+    if (!authHeader || typeof authHeader !== "string") return false;
+    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+    if (token.length !== configuredToken.length) return false;
+    try {
+      return crypto.timingSafeEqual(Buffer.from(token, "utf8"), Buffer.from(configuredToken, "utf8"));
+    } catch {
       return false;
     }
-    
-    const token = authHeader.replace(/^Bearer\s+/i, "");
-    return token === configuredToken;
   };
 
   describe("Without admin token configured", () => {
@@ -56,20 +53,17 @@ describe("API Authorization Logic", () => {
       assert.strictEqual(checkAuthorization("BEARER " + TEST_TOKEN, TEST_TOKEN), true);
     });
 
-    test("handles tokens with special characters", () => {
-      // Token with spaces
-      const tokenWithSpaces = "token with spaces";
-      assert.strictEqual(
-        checkAuthorization("Bearer " + tokenWithSpaces, tokenWithSpaces),
-        true
-      );
-
-      // Token with special characters
+    test("accepts tokens with special characters", () => {
       const specialToken = "token-with_special.chars!@#";
       assert.strictEqual(
         checkAuthorization("Bearer " + specialToken, specialToken),
         true
       );
+    });
+
+    test("rejects wrong length token (constant-time safe)", () => {
+      assert.strictEqual(checkAuthorization("Bearer x", TEST_TOKEN), false);
+      assert.strictEqual(checkAuthorization("Bearer " + TEST_TOKEN + "x", TEST_TOKEN), false);
     });
   });
 });

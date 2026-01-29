@@ -1,19 +1,18 @@
-<script>
+<script lang="ts">
 	import { onMount } from 'svelte';
-	
-	export let instanceName;
-	
+	import { apiFetch } from '$lib/api';
+
+	export let instanceName: string;
+
 	let logs = '';
 	let errLogs = '';
 	let loading = true;
-	let activeTab = 'stdout';
+	let activeTab: 'stdout' | 'stderr' = 'stdout';
 	let autoRefresh = true;
-
-	const API_BASE = '/api';
 
 	async function fetchLogs() {
 		try {
-			const res = await fetch(`${API_BASE}/instances/${instanceName}/logs`);
+			const res = await apiFetch(`/instances/${instanceName}/logs`);
 			if (!res.ok) throw new Error('Failed to fetch logs');
 			const data = await res.json();
 			logs = data.logs || '';

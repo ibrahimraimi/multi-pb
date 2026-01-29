@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const http = require("http");
+const crypto = require("crypto");
 const { exec, spawn } = require("child_process");
 const { promisify } = require("util");
 const execAsync = promisify(exec);
@@ -15,7 +16,7 @@ const LOG_DIR = "/var/log/multipb";
 const BACKUP_DIR = "/var/multipb/backups";
 const CONFIG_FILE = "/var/multipb/data/config.json";
 const HISTORY_FILE = "/var/multipb/data/health_history.json";
-const VERSIONS_DIR = "/var/multipb/versions";
+const VERSIONS_DIR = "/var/multipb/data/versions";
 
 let config = {};
 let healthHistory = {};
@@ -33,12 +34,60 @@ async function loadConfig() {
       monitoring: { intervalSeconds: 60, historyRetentionCount: 100 },
     };
   }
-  
-  // Load admin token from environment or config
+
+  // Load admin token from config (priority) or environment
   // Empty strings are falsy and will result in null (authorization disabled)
-  adminToken = process.env.MULTIPB_ADMIN_TOKEN || config.adminToken || null;
+  const envToken = process.env.MULTIPB_ADMIN_TOKEN;
+  const configToken = config.adminToken;
+
+  // New logic: Config token overrides ENV token if present and not empty
+  // This allows changing the token via CLI/API even if ENV was set at launch
+  if (configToken && typeof configToken === 'string' && configToken.length > 0) {
+    adminToken = configToken;
+  } else {
+    adminToken = envToken || null;
+  }
+
   if (adminToken) {
     console.log("Admin token configured - API authorization enabled");
+    const source = (configToken && configToken.length > 0) ? "config.json" : "MULTIPB_ADMIN_TOKEN env var";
+    console.log(`  Source: ${source}`);
+  } else {
+    console.log("Admin token not configured - API is open (no authorization required)");
+  }
+}
+
+// Watch for config changes
+let fsWatcher = null;
+function startConfigWatcher() {
+  try {
+    if (fsWatcher) fsWatcher.close();
+
+    let debounceTimer = null;
+    // Watch the data directory instead of the specific file to catch creation/deletion
+    // config.json might be recreated atomically (rename) which some file watchers miss on the file itself
+    fsWatcher = fsSync.watch(DATA_DIR, (eventType, filename) => {
+      if (filename === 'config.json' && (eventType === 'rename' || eventType === 'change')) {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          console.log(`Config file changed (${eventType}), reloading...`);
+          loadConfig();
+        }, 100);
+      }
+    });
+    console.log(`Watching ${DATA_DIR} for config.json changes...`);
+  } catch (e) {
+    console.log(`Config file watcher failed: ${e.message}`);
+  }
+}
+
+async function getRestoreStatus() {
+  const statusFile = "/var/multipb/restore.status";
+  try {
+    const data = await fs.readFile(statusFile, "utf8");
+    return JSON.parse(data);
+  } catch (e) {
+    return { restoring: false, current: "", completed: 0, total: 0, error: e.code };
   }
 }
 
@@ -92,12 +141,16 @@ async function monitorLoop() {
   // Initial load
   await loadConfig();
   await loadHistory();
+  startConfigWatcher(); // Start watching file
 
   const interval = (config.monitoring?.intervalSeconds || 60) * 1000;
 
   console.log(`Starting health monitor (interval: ${interval}ms)`);
 
   setInterval(async () => {
+    // Reload config periodically (backup for watcher)
+    await loadConfig();
+
     const manifest = await readManifest();
     const timestamp = new Date().toISOString();
 
@@ -183,7 +236,7 @@ async function getSystemStats() {
         "free -m 2>/dev/null | awk 'NR==2{printf \"%.1f\", $3*100/$2}'",
       );
       memoryPercent = parseFloat(memInfo) || 0;
-    } catch (e) {}
+    } catch (e) { }
 
     let diskUsage = "0B";
     try {
@@ -191,7 +244,7 @@ async function getSystemStats() {
         `du -sh "${DATA_DIR}" 2>/dev/null | cut -f1`,
       );
       diskUsage = du.trim() || "0B";
-    } catch (e) {}
+    } catch (e) { }
 
     return { load: load.toFixed(2), memoryPercent, diskUsage };
   } catch (e) {
@@ -231,7 +284,7 @@ async function getLogs(instanceName, lineCount = 200) {
     try {
       const { stdout } = await execAsync(`tail -n 50 "${errFile}" 2>/dev/null`);
       errLogs = stdout;
-    } catch (e) {}
+    } catch (e) { }
 
     return { logs, errLogs };
   } catch (error) {
@@ -410,7 +463,7 @@ async function restoreBackup(instanceName, backupName) {
     try {
       await fs.rename(instanceDir, tempBackupDir);
       await fs.mkdir(instanceDir, { recursive: true });
-    } catch (e) {}
+    } catch (e) { }
 
     // Extract backup directly to instance dir
     await execAsync(`cd "${instanceDir}" && unzip -o "${backupPath}"`);
@@ -421,7 +474,7 @@ async function restoreBackup(instanceName, backupName) {
     // Clean up old data after successful restore
     try {
       await fs.rm(tempBackupDir, { recursive: true });
-    } catch (e) {}
+    } catch (e) { }
 
     return { success: true };
   } catch (e) {
@@ -429,7 +482,7 @@ async function restoreBackup(instanceName, backupName) {
     try {
       await fs.rm(instanceDir, { recursive: true });
       await fs.rename(tempBackupDir, instanceDir);
-    } catch (e2) {}
+    } catch (e2) { }
 
     await execScript("start-instance.sh", [instanceName]);
     return { success: false, error: e.message };
@@ -456,7 +509,7 @@ async function getInstanceDetails(name, port) {
     const dbPath = path.join(instanceDir, "pb_data", "data.db");
     const stat = await fs.stat(dbPath);
     recordsEstimate = Math.floor(stat.size / 1024); // rough estimate
-  } catch (e) {}
+  } catch (e) { }
 
   return {
     size,
@@ -472,20 +525,17 @@ async function parseBody(req) {
   return body ? JSON.parse(body) : {};
 }
 
-// Check authorization
+// Check authorization (constant-time compare when token is set)
 function checkAuthorization(authHeader) {
-  // If no admin token is configured, allow all requests
-  if (!adminToken) {
-    return true;
-  }
-  
-  // If admin token is configured, require valid Bearer token
-  if (!authHeader) {
+  if (!adminToken) return true;
+  if (!authHeader || typeof authHeader !== "string") return false;
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+  if (token.length !== adminToken.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(token, "utf8"), Buffer.from(adminToken, "utf8"));
+  } catch {
     return false;
   }
-  
-  const token = authHeader.replace(/^Bearer\s+/i, "");
-  return token === adminToken;
 }
 
 const server = http.createServer(async (req, res) => {
@@ -513,17 +563,30 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify(data));
   };
 
-  // Check authorization for write operations (POST, PUT, DELETE)
-  const isWriteOperation = ["POST", "PUT", "DELETE", "PATCH"].includes(req.method);
-  if (isWriteOperation && !checkAuthorization(authToken)) {
-    return sendJson(401, { error: "Unauthorized: Valid admin token required" });
+  // When admin token is set, require it for all requests (read and write)
+  if (adminToken && !checkAuthorization(authToken)) {
+    return sendJson(401, { error: "Unauthorized", code: "admin_token_required" });
   }
 
   try {
+    // GET /api/auth/status - Check if auth is enabled (no auth required for this endpoint)
+    if (pathname === "/api/auth/status" && req.method === "GET") {
+      return sendJson(200, {
+        authRequired: !!adminToken,
+        configured: adminToken !== null,
+      });
+    }
+
     // GET /api/stats
     if (pathname === "/api/stats" && req.method === "GET") {
       const stats = await getSystemStats();
       return sendJson(200, stats);
+    }
+
+    // GET /api/system/status
+    if (pathname === "/api/system/status" && req.method === "GET") {
+      const status = await getRestoreStatus();
+      return sendJson(200, status);
     }
 
     // GET /api/notifications/config
@@ -647,7 +710,7 @@ const server = http.createServer(async (req, res) => {
         const result = await execScript("import-instance.sh", [tempFile, name]);
 
         // Cleanup
-        await fs.unlink(tempFile).catch(() => {});
+        await fs.unlink(tempFile).catch(() => { });
 
         if (result.success) {
           return sendJson(200, { success: true, name });
