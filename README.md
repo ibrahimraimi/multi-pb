@@ -48,18 +48,19 @@ Install curl if needed:
 
 ## Quick Start
 
-**One-liner (curl):** When piped, the script runs non-interactively and uses defaults.
+**Interactive install (curl):**
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/n3-rd/multi-pb/main/install.sh)
+```
+Prompts for port, data dir, domain, etc.
+
+**Non-interactive (piped, uses defaults):**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/n3-rd/multi-pb/main/install.sh | bash
 ```
 With options (port, data dir, domain):
 ```bash
 curl -fsSL https://raw.githubusercontent.com/n3-rd/multi-pb/main/install.sh | bash -s -- --non-interactive --port 25983 --data-dir ./multipb-data
-```
-
-Or interactive (will prompt for config):
-```bash
-curl -fsSL https://raw.githubusercontent.com/n3-rd/multi-pb/main/install.sh | bash -s --
 ```
 
 **From clone:**
