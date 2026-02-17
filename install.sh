@@ -315,11 +315,40 @@ fi
 # Traefik auto-config: add labels and discover network
 if [ "$PROXY_AUTO_CONFIG" = "traefik" ]; then
     TRAEFIK_NETWORK=""
-    if [ -n "$TRAEFIK_CONTAINER" ]; then
-        TRAEFIK_NETWORK=$(docker inspect "$TRAEFIK_CONTAINER" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null | awk '{print $1}')
+
+    # Try to find the Traefik container if not already set
+    if [ -z "$TRAEFIK_CONTAINER" ]; then
+        TRAEFIK_CONTAINER=$(docker ps --format '{{.Names}}' --filter "publish=80" 2>/dev/null | head -1)
     fi
-    # Fallback: check common network names
-    if [ -z "$TRAEFIK_NETWORK" ] || [ "$TRAEFIK_NETWORK" = "bridge" ]; then
+
+    # Get all non-bridge networks from the Traefik container
+    if [ -n "$TRAEFIK_CONTAINER" ]; then
+        TRAEFIK_NETWORKS=$(docker inspect "$TRAEFIK_CONTAINER" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null | tr ' ' '\n' | grep -v '^bridge$' | grep -v '^$')
+        # If exactly one non-bridge network, use it
+        NET_COUNT=$(echo "$TRAEFIK_NETWORKS" | wc -l | tr -d ' ')
+        if [ "$NET_COUNT" = "1" ] && [ -n "$TRAEFIK_NETWORKS" ]; then
+            TRAEFIK_NETWORK="$TRAEFIK_NETWORKS"
+        elif [ "$NET_COUNT" -gt 1 ] 2>/dev/null; then
+            # Multiple networks — let user pick
+            if [ "$NON_INTERACTIVE" != "true" ]; then
+                echo -e "${YELLOW}Traefik container is on multiple networks:${NC}"
+                i=1
+                for net in $TRAEFIK_NETWORKS; do
+                    echo -e "  ${GREEN}${i})${NC} ${net}"
+                    i=$((i + 1))
+                done
+                read -p "Which network should Multi-PB join? [1]: " NET_PICK
+                NET_PICK="${NET_PICK:-1}"
+                TRAEFIK_NETWORK=$(echo "$TRAEFIK_NETWORKS" | sed -n "${NET_PICK}p")
+            else
+                # Non-interactive: pick first non-bridge
+                TRAEFIK_NETWORK=$(echo "$TRAEFIK_NETWORKS" | head -1)
+            fi
+        fi
+    fi
+
+    # Fallback: scan for common network names
+    if [ -z "$TRAEFIK_NETWORK" ]; then
         for net in traefik web proxy traefik-public; do
             if docker network inspect "$net" &>/dev/null; then
                 TRAEFIK_NETWORK="$net"
@@ -327,22 +356,48 @@ if [ "$PROXY_AUTO_CONFIG" = "traefik" ]; then
             fi
         done
     fi
-    if [ -n "$TRAEFIK_NETWORK" ] && [ "$TRAEFIK_NETWORK" != "bridge" ]; then
-        echo -e "${GREEN}Detected Traefik network: ${TRAEFIK_NETWORK}${NC}"
-    else
-        TRAEFIK_NETWORK="web"
-        echo -e "${YELLOW}Could not detect Traefik network, using '${TRAEFIK_NETWORK}'. Edit docker-compose.yml if different.${NC}"
+
+    # Still nothing — ask the user
+    if [ -z "$TRAEFIK_NETWORK" ]; then
+        if [ "$NON_INTERACTIVE" != "true" ]; then
+            echo -e "${YELLOW}Could not auto-detect Traefik's docker network.${NC}"
+            echo -e "List your networks with: ${BLUE}docker network ls${NC}"
+            read -p "Traefik network name: " TRAEFIK_NETWORK
+        fi
+        if [ -z "$TRAEFIK_NETWORK" ]; then
+            echo -e "${RED}No Traefik network specified. Falling back to manual instructions.${NC}"
+            PROXY_AUTO_CONFIG="none"
+        fi
     fi
+
+    if [ "$PROXY_AUTO_CONFIG" = "traefik" ]; then
+        echo -e "${GREEN}Using Traefik network: ${TRAEFIK_NETWORK}${NC}"
+
+        # Detect entrypoints and certresolver from Traefik container command/labels
+        TRAEFIK_ENTRYPOINT="websecure"
+        TRAEFIK_CERTRESOLVER="letsencrypt"
+        if [ -n "$TRAEFIK_CONTAINER" ]; then
+            # Try to detect entrypoint name from container command args
+            TRAEFIK_CMD=$(docker inspect "$TRAEFIK_CONTAINER" --format '{{join .Config.Cmd " "}}' 2>/dev/null || echo "")
+            if echo "$TRAEFIK_CMD" | grep -qoP 'entrypoints\.\K[a-zA-Z0-9_-]+(?=\.address=:443)' 2>/dev/null; then
+                TRAEFIK_ENTRYPOINT=$(echo "$TRAEFIK_CMD" | grep -oP 'entrypoints\.\K[a-zA-Z0-9_-]+(?=\.address=:443)' | head -1)
+            fi
+            if echo "$TRAEFIK_CMD" | grep -qoP 'certificatesresolvers\.\K[a-zA-Z0-9_-]+' 2>/dev/null; then
+                TRAEFIK_CERTRESOLVER=$(echo "$TRAEFIK_CMD" | grep -oP 'certificatesresolvers\.\K[a-zA-Z0-9_-]+' | head -1)
+            fi
+        fi
+
 cat >> "$INSTALL_DIR/docker-compose.yml" << EOF
     labels:
       - traefik.enable=true
       - traefik.http.routers.multipb.rule=Host(\`${DOMAIN_NAME}\`)
-      - traefik.http.routers.multipb.entrypoints=websecure
-      - traefik.http.routers.multipb.tls.certresolver=letsencrypt
+      - traefik.http.routers.multipb.entrypoints=${TRAEFIK_ENTRYPOINT}
+      - traefik.http.routers.multipb.tls.certresolver=${TRAEFIK_CERTRESOLVER}
       - traefik.http.services.multipb.loadbalancer.server.port=25983
     networks:
       - ${TRAEFIK_NETWORK}
 EOF
+    fi
 fi
 
 cat >> "$INSTALL_DIR/docker-compose.yml" << EOF
