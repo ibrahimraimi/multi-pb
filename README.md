@@ -32,13 +32,42 @@ This project follows a monorepo-style structure:
 
 See the [Development Guide](apps/docs/DEVELOPMENT.md) for more details on project structure and testing.
 
+## Prerequisites
+
+- **Docker** and **Docker Compose**
+- **curl** (used for health checks in the container)
+
+Install curl if needed:
+
+| Platform | Command |
+|----------|---------|
+| Ubuntu/Debian | `sudo apt-get install -y curl` |
+| Fedora/RHEL | `sudo dnf install -y curl` |
+| macOS | `brew install curl` |
+| Alpine | `apk add curl` |
+
 ## Quick Start
 
+**One-liner (curl):** When piped, the script runs non-interactively and uses defaults.
+```bash
+curl -fsSL https://raw.githubusercontent.com/n3-rd/multi-pb/main/install.sh | bash
+```
+With options (port, data dir, domain):
+```bash
+curl -fsSL https://raw.githubusercontent.com/n3-rd/multi-pb/main/install.sh | bash -s -- --non-interactive --port 25983 --data-dir ./multipb-data
+```
+
+Or interactive (will prompt for config):
+```bash
+curl -fsSL https://raw.githubusercontent.com/n3-rd/multi-pb/main/install.sh | bash -s --
+```
+
+**From clone:**
 ```bash
 git clone https://github.com/n3-rd/multi-pb.git
 cd multi-pb
 # Recommended: Use Bun for speed
-bun install 
+bun install
 ./install.sh
 ```
 

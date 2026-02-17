@@ -8,13 +8,23 @@ MANIFEST_FILE="/var/multipb/data/instances.json"
 CADDYFILE="/etc/caddy/Caddyfile"
 MULTIPB_PORT="${MULTIPB_PORT:-25983}"
 
+# Domain: config.json takes priority, then env (so dashboard edits always win)
+if [ -f "/var/multipb/data/config.json" ] && command -v jq >/dev/null 2>&1; then
+  CONFIG_DOMAIN=$(jq -r '.dns.domain // empty' /var/multipb/data/config.json 2>/dev/null)
+fi
+if [ -n "$CONFIG_DOMAIN" ]; then
+  MULTIPB_DOMAIN="$CONFIG_DOMAIN"
+else
+  MULTIPB_DOMAIN="${MULTIPB_DOMAIN:-}"
+fi
+
 echo "Regenerating Caddy configuration..."
 
 # Start building Caddyfile
 echo "Building Caddyfile with DOMAIN=${MULTIPB_DOMAIN} PORT=${MULTIPB_PORT}"
 
 if [ -n "$MULTIPB_DOMAIN" ]; then
-    # HTTPS Mode (Domain provided)
+    # HTTPS + port fallback: domain block for public traffic, port block for local/dashboard access
     cat > "$CADDYFILE" << EOF
 {
     admin localhost:2019
@@ -109,6 +119,40 @@ cat >> "$CADDYFILE" << 'EOF'
     }
 }
 EOF
+
+# When using a domain, add a port-based fallback so the dashboard/API stays reachable
+# even if 80/443 aren't exposed or DNS isn't pointing here yet.
+if [ -n "$MULTIPB_DOMAIN" ]; then
+    cat >> "$CADDYFILE" << EOF
+
+# Fallback: always keep port ${MULTIPB_PORT} listening for local/direct access
+http://:${MULTIPB_PORT} {
+    handle /_health {
+        respond "OK" 200
+    }
+    handle /api/* {
+        reverse_proxy 127.0.0.1:3001
+    }
+EOF
+    if [ -d "/var/www/dashboard" ] && [ -f "/var/www/dashboard/index.html" ]; then
+        cat >> "$CADDYFILE" << 'EOF'
+    handle /dashboard* {
+        root * /var/www
+        try_files {path} {path}/ /dashboard/index.html
+        file_server
+    }
+    handle / {
+        redir /dashboard/ 301
+    }
+EOF
+    fi
+    cat >> "$CADDYFILE" << 'EOF'
+    handle {
+        respond "Multi-PB - Use the configured domain for full access" 200
+    }
+}
+EOF
+fi
 
 # Replace variables
 sed -i "s|\${INSTANCE_LIST}|$INSTANCE_LIST|g" "$CADDYFILE"

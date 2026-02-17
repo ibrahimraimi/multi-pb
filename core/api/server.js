@@ -32,8 +32,10 @@ async function loadConfig() {
     config = {
       notifications: { webhookUrl: "" },
       monitoring: { intervalSeconds: 60, historyRetentionCount: 100 },
+      dns: { domain: "" },
     };
   }
+  if (!config.dns) config.dns = { domain: "" };
 
   // Load admin token from config (priority) or environment
   // Empty strings are falsy and will result in null (authorization disabled)
@@ -594,6 +596,62 @@ const server = http.createServer(async (req, res) => {
       return sendJson(200, {
         webhookUrl: config.notifications?.webhookUrl || "",
       });
+    }
+
+    // GET /api/dns/config
+    if (pathname === "/api/dns/config" && req.method === "GET") {
+      // Config wins over env (so dashboard edits are always reflected)
+      const domain =
+        config.dns?.domain ||
+        process.env.MULTIPB_DOMAIN ||
+        "";
+      return sendJson(200, { domain });
+    }
+
+    // PATCH /api/dns/config
+    if (pathname === "/api/dns/config" && req.method === "PATCH") {
+      const body = await parseBody(req);
+      const domain =
+        typeof body.domain === "string" ? body.domain.trim() : "";
+
+      // Validate domain if non-empty
+      if (domain) {
+        if (domain.includes("://")) {
+          return sendJson(400, { error: "Enter a domain name, not a URL (no http:// or https://)" });
+        }
+        if (/\s/.test(domain)) {
+          return sendJson(400, { error: "Domain must not contain spaces" });
+        }
+        if (!/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/.test(domain)) {
+          return sendJson(400, { error: "Invalid domain format" });
+        }
+      }
+
+      config.dns = config.dns || {};
+      config.dns.domain = domain;
+      await fs.writeFile(
+        CONFIG_FILE,
+        JSON.stringify(config, null, 2),
+        "utf8",
+      );
+
+      // Reload proxy — surface errors to the caller
+      let reloadError = null;
+      try {
+        await execAsync("/usr/local/bin/reload-proxy.sh");
+      } catch (e) {
+        console.error("reload-proxy after DNS update:", e.message);
+        reloadError = e.stderr || e.message;
+      }
+
+      if (reloadError) {
+        return sendJson(207, {
+          domain,
+          warning: "Domain saved but Caddy reload failed",
+          reloadError,
+        });
+      }
+      return sendJson(200, { domain });
     }
 
     // GET /api/instances
