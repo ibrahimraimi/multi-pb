@@ -26,6 +26,7 @@ check_command() {
 
 # Parse command line arguments
 CLI_ONLY=false
+NON_INTERACTIVE=false
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --port) MULTIPB_PORT="$2"; shift ;;
@@ -38,6 +39,11 @@ while [[ "$#" -gt 0 ]]; do
     esac
     shift
 done
+
+# When piped (e.g. curl ... | bash), stdin is not a TTY: force non-interactive and use defaults
+if [ ! -t 0 ]; then
+    NON_INTERACTIVE=true
+fi
 
 echo -e "${YELLOW}Checking requirements...${NC}"
 check_command docker
